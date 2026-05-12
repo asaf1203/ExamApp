@@ -1,7 +1,10 @@
+/* Global resets and root layout beyond Bootstrap defaults */
+
 body {
   margin: 0;
 }
 
+/* Ensures the app fills the viewport even when content is short */
 #root {
   min-height: 100vh;
 }

@@ -1,3 +1,6 @@
+/**
+ * Student view: fetch a single exam by ID and show a read-only question preview.
+ */
 import { useState } from 'react'
 import { getExamById } from './api/examService'
 
@@ -76,6 +79,7 @@ function StudentPortal() {
         </div>
       </div>
 
+      {/* Shown only after a successful getExamById */}
       {exam && (
         <div className="card shadow-sm mt-4">
           <div className="card-header bg-white">
