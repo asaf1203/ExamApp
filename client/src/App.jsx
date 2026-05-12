@@ -1,9 +1,14 @@
+/**
+ * Root layout: role toggle switches between teacher dashboard and student portal.
+ * No real auth—state only simulates which UI branch is visible.
+ */
 import { useState } from 'react'
 import './App.css'
 import StudentPortal from './StudentPortal'
 import TeacherDashboard from './TeacherDashboard'
 
 function App() {
+  // 'teacher' | 'student' — drives which child screen is shown below the header card
   const [role, setRole] = useState('teacher')
   const isTeacher = role === 'teacher'
 
@@ -22,6 +27,7 @@ function App() {
               </p>
             </div>
 
+            {/* Simple role picker; replaces a real login until backend exists */}
             <div className="btn-group" role="group" aria-label="Role login">
               <button
                 className={`btn ${isTeacher ? 'btn-primary' : 'btn-outline-primary'}`}

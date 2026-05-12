@@ -1,3 +1,5 @@
+/* Full-bleed background wrapper from App.jsx <main className="app-shell"> */
+
 .app-shell {
   min-height: 100vh;
 }

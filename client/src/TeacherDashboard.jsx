@@ -1,3 +1,6 @@
+/**
+ * Teacher view: lists all mock exams and per-exam submission counts from studentScores.
+ */
 import { useEffect, useState } from 'react'
 import { getAllExams, getStudentScores } from './api/examService'
 
@@ -8,6 +11,7 @@ function TeacherDashboard() {
   const [error, setError] = useState('')
 
   useEffect(() => {
+    // Avoid setState after unmount if the async fetches finish late (e.g. slow tab)
     let isActive = true
 
     const loadDashboard = async () => {
@@ -42,6 +46,7 @@ function TeacherDashboard() {
     }
   }, [])
 
+  // One row in studentScores counts as one submission for that examId
   const getSubmissionsCount = (examId) =>
     scores.filter((score) => score.examId === examId).length
 

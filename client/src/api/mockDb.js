@@ -1,3 +1,7 @@
+/**
+ * In-memory seed data for the mock exam platform. Replaces a database until a
+ * real API exists. Shape mirrors expected future REST payloads.
+ */
 export const mockDb = {
   exams: [
     {
@@ -102,6 +106,7 @@ export const mockDb = {
       ],
     },
   ],
+  // Graded attempts; examId ties each record to exams[].id for dashboard stats
   studentScores: [
     {
       id: 'SC-9001',
