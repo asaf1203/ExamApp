@@ -1,14 +1,49 @@
 /**
- * Student view: fetch a single exam by ID and show a read-only question preview.
+ * Student view: fetch available exams or a single exam by ID and show a
+ * read-only question preview.
  */
-import { useState } from 'react'
-import { getExamById } from './api/examService'
+import { useEffect, useState } from 'react'
+import { getAllExams, getExamById } from './api/examService'
 
 function StudentPortal() {
   const [examId, setExamId] = useState('')
   const [exam, setExam] = useState(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [availableExams, setAvailableExams] = useState([])
+  const [availableLoading, setAvailableLoading] = useState(true)
+  const [availableError, setAvailableError] = useState('')
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadAvailableExams = async () => {
+      try {
+        setAvailableLoading(true)
+        setAvailableError('')
+
+        const examData = await getAllExams()
+
+        if (isActive) {
+          setAvailableExams(examData)
+        }
+      } catch (err) {
+        if (isActive) {
+          setAvailableError(err.message)
+        }
+      } finally {
+        if (isActive) {
+          setAvailableLoading(false)
+        }
+      }
+    }
+
+    loadAvailableExams()
+
+    return () => {
+      isActive = false
+    }
+  }, [])
 
   const handleStartExam = async (event) => {
     event.preventDefault()
@@ -23,6 +58,7 @@ function StudentPortal() {
       setLoading(true)
       setError('')
       const selectedExam = await getExamById(examId)
+      setExamId(selectedExam.id)
       setExam(selectedExam)
     } catch (err) {
       setExam(null)
@@ -30,6 +66,12 @@ function StudentPortal() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleQuickStartExam = (selectedExam) => {
+    setExamId(selectedExam.id)
+    setExam(selectedExam)
+    setError('')
   }
 
   return (
@@ -40,7 +82,7 @@ function StudentPortal() {
         </p>
         <h1 className="h3 mb-1">Student Portal</h1>
         <p className="text-secondary mb-0">
-          Enter an exam ID such as EX-101, EX-202, or EX-303.
+          Pick an available exam or enter an exam ID.
         </p>
       </div>
 
@@ -77,6 +119,97 @@ function StudentPortal() {
             </div>
           )}
         </div>
+      </div>
+
+      <div className="card shadow-sm mt-4">
+        <div className="card-header bg-white">
+          <div className="d-flex flex-column flex-md-row justify-content-between gap-2">
+            <div>
+              <h2 className="h5 mb-1">Available Exams</h2>
+              <p className="text-secondary mb-0">
+                Choose one to start without typing an ID.
+              </p>
+            </div>
+            <span className="badge text-bg-primary align-self-md-start">
+              {availableExams.length} available
+            </span>
+          </div>
+        </div>
+
+        {availableLoading && (
+          <div className="card-body">
+            <div className="alert alert-info mb-0" role="status">
+              Loading available exams...
+            </div>
+          </div>
+        )}
+
+        {availableError && (
+          <div className="card-body">
+            <div className="alert alert-danger mb-0" role="alert">
+              {availableError}
+            </div>
+          </div>
+        )}
+
+        {!availableLoading && !availableError && (
+          <div className="list-group list-group-flush">
+            {availableExams.map((availableExam) => {
+              const isSelected = exam?.id === availableExam.id
+
+              return (
+                <button
+                  aria-label={`Quick start ${availableExam.title}`}
+                  className={`list-group-item list-group-item-action ${
+                    isSelected ? 'active' : ''
+                  }`}
+                  disabled={loading}
+                  key={availableExam.id}
+                  onClick={() => handleQuickStartExam(availableExam)}
+                  type="button"
+                >
+                  <div className="d-flex flex-column flex-lg-row justify-content-between gap-3">
+                    <div>
+                      <div className="fw-semibold">{availableExam.title}</div>
+                      <div className={isSelected ? '' : 'text-secondary'}>
+                        {availableExam.id} - {availableExam.description}
+                      </div>
+                    </div>
+                    <div className="d-flex flex-wrap gap-2 align-items-start">
+                      <span
+                        className={`badge ${
+                          isSelected
+                            ? 'text-bg-light'
+                            : 'text-bg-light border'
+                        }`}
+                      >
+                        {availableExam.durationMinutes} min
+                      </span>
+                      <span
+                        className={`badge ${
+                          isSelected
+                            ? 'text-bg-light'
+                            : 'text-bg-secondary'
+                        }`}
+                      >
+                        {availableExam.questions.length} questions
+                      </span>
+                      <span
+                        className={`badge ${
+                          isSelected
+                            ? 'text-bg-light'
+                            : 'text-bg-primary'
+                        }`}
+                      >
+                        {isSelected ? 'Selected' : 'Quick start'}
+                      </span>
+                    </div>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Shown only after a successful getExamById */}
