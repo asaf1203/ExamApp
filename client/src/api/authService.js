@@ -4,15 +4,16 @@
  * the internals with fetch/axios calls.
  */
 import { clearAuthToken, getAuthToken, saveAuthToken } from './authTokenStorage'
+import { apiClient, mockRequest } from './apiClient'
+import { appConfig } from '../config'
 import { mockDb } from './mockDb'
-import { simulateRequest } from './mockApiClient'
 
 export const USER_ROLES = {
   student: 'student',
   teacher: 'teacher',
 }
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 8
+const SESSION_TTL_MS = appConfig.auth.sessionTtlMs
 
 const normalizeEmail = (email) => String(email).trim().toLowerCase()
 
@@ -75,8 +76,16 @@ const requireAuthPayload = ({ email, password }) => {
   }
 }
 
-export const login = async ({ email, password }) =>
-  simulateRequest(() => {
+const persistSession = (session) => {
+  if (session?.token) {
+    saveAuthToken(session.token)
+  }
+
+  return session
+}
+
+const mockLogin = ({ email, password }) =>
+  mockRequest(() => {
     requireAuthPayload({ email, password })
 
     const user = findUserByEmail(email)
@@ -94,8 +103,12 @@ export const login = async ({ email, password }) =>
     }
   })
 
-export const signup = async ({ name, email, password, role }) =>
-  simulateRequest(() => {
+const mockSignup = ({ name, email, password, role }) =>
+  mockRequest(() => {
+    if (!appConfig.features.registration) {
+      throw new Error('Registration is currently disabled.')
+    }
+
     requireAuthPayload({ email, password })
 
     const trimmedName = String(name ?? '').trim()
@@ -138,8 +151,8 @@ export const signup = async ({ name, email, password, role }) =>
     }
   })
 
-export const getCurrentUser = async () =>
-  simulateRequest(() => {
+const mockGetCurrentUser = () =>
+  mockRequest(() => {
     const token = getAuthToken()
 
     if (!token) {
@@ -163,8 +176,8 @@ export const getCurrentUser = async () =>
     return publicUser(user)
   })
 
-export const logout = async () =>
-  simulateRequest(() => {
+const mockLogout = () =>
+  mockRequest(() => {
     const token = getAuthToken()
 
     if (token) {
@@ -175,3 +188,40 @@ export const logout = async () =>
 
     return { success: true }
   })
+
+export const login = async ({ email, password }) =>
+  apiClient.isMock
+    ? mockLogin({ email, password })
+    : apiClient.post('/auth/login', { email, password }).then(persistSession)
+
+export const signup = async ({ name, email, password, role }) =>
+  apiClient.isMock
+    ? mockSignup({ email, name, password, role })
+    : apiClient
+        .post('/auth/signup', { email, name, password, role })
+        .then(persistSession)
+
+export const getCurrentUser = async () => {
+  if (apiClient.isMock) {
+    return mockGetCurrentUser()
+  }
+
+  if (!getAuthToken()) {
+    return null
+  }
+
+  return apiClient.get('/auth/me').catch(() => {
+    clearAuthToken()
+    return null
+  })
+}
+
+export const logout = async () => {
+  if (apiClient.isMock) {
+    return mockLogout()
+  }
+
+  return apiClient.post('/auth/logout').finally(() => {
+    clearAuthToken()
+  })
+}

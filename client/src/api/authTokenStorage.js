@@ -1,4 +1,6 @@
-const AUTH_TOKEN_KEY = 'examPlatform.authToken'
+import { appConfig } from '../config'
+
+const AUTH_TOKEN_KEY = appConfig.auth.tokenStorageKey
 
 let fallbackToken = ''
 

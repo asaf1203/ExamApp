@@ -4,6 +4,7 @@ import { USER_ROLES } from './api/authService'
 import { AuthProvider } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import { useAuth } from './auth/authState'
+import { appConfig } from './config'
 import StudentPortal from './StudentPortal'
 import TeacherDashboard from './TeacherDashboard'
 
@@ -43,8 +44,10 @@ function AuthenticatedApp() {
     )
   }
 
-  const isTeacher = currentUser.role === USER_ROLES.teacher
-  const isStudent = currentUser.role === USER_ROLES.student
+  const isTeacher =
+    currentUser.role === USER_ROLES.teacher && appConfig.features.teacherDashboard
+  const isStudent =
+    currentUser.role === USER_ROLES.student && appConfig.features.studentPortal
 
   return (
     <main className="app-shell bg-body-tertiary">
@@ -53,12 +56,10 @@ function AuthenticatedApp() {
           <div className="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
             <div className="text-start">
               <p className="text-uppercase text-primary fw-semibold small mb-1">
-                E-Test System
+                {appConfig.app.name}
               </p>
-              <h1 className="h2 mb-1">Mock Exam Platform</h1>
-              <p className="text-secondary mb-0">
-                React components prepared for a future Node.js backend.
-              </p>
+              <h1 className="h2 mb-1">{appConfig.app.title}</h1>
+              <p className="text-secondary mb-0">{appConfig.app.description}</p>
             </div>
 
             <div className="d-flex flex-column flex-sm-row align-items-sm-center gap-2 text-start text-sm-end">
@@ -85,7 +86,7 @@ function AuthenticatedApp() {
         {isStudent && <StudentPortal />}
         {!isTeacher && !isStudent && (
           <div className="alert alert-danger" role="alert">
-            Unsupported user role.
+            This role is not enabled in the current configuration.
           </div>
         )}
       </div>
