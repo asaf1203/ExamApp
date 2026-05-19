@@ -9,6 +9,7 @@ function TeacherDashboard() {
   const [scores, setScores] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [expandedExamId, setExpandedExamId] = useState(null)
 
   useEffect(() => {
     // Avoid setState after unmount if the async fetches finish late (e.g. slow tab)
@@ -49,6 +50,10 @@ function TeacherDashboard() {
   // One row in studentScores counts as one submission for that examId
   const getSubmissionsCount = (examId) =>
     scores.filter((score) => score.examId === examId).length
+
+  const toggleSubmissions = (examId) => {
+    setExpandedExamId(expandedExamId === examId ? null : examId)
+  }
 
   return (
     <section className="text-start">
@@ -97,7 +102,7 @@ function TeacherDashboard() {
 
                   <p className="card-text mt-3">{exam.description}</p>
 
-                  <div className="d-flex flex-wrap gap-2 mt-3">
+                  <div className="d-flex flex-wrap align-items-center gap-2 mt-3">
                     <span className="badge text-bg-secondary">
                       {exam.questions.length} questions
                     </span>
@@ -107,8 +112,56 @@ function TeacherDashboard() {
                     <span className="badge text-bg-info">
                       Created by {exam.createdBy}
                     </span>
+                    {getSubmissionsCount(exam.id) > 0 && (
+                      <button
+                        className="btn btn-sm btn-outline-primary ms-auto"
+                        onClick={() => toggleSubmissions(exam.id)}
+                      >
+                        {expandedExamId === exam.id ? 'Hide' : 'View'} Submissions
+                      </button>
+                    )}
                   </div>
                 </div>
+
+                {expandedExamId === exam.id && (
+                  <div className="p-3 border-top bg-light">
+                    <h3 className="h6 mb-3">Recent Submissions</h3>
+                    <div className="table-responsive">
+                      <table className="table table-sm table-hover mb-0">
+                        <thead className="table-light">
+                          <tr>
+                            <th>Student</th>
+                            <th>Score</th>
+                            <th>%</th>
+                            <th>Date</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {scores
+                            .filter((s) => s.examId === exam.id)
+                            .map((s) => (
+                              <tr key={s.id}>
+                                <td>{s.studentName}</td>
+                                <td>
+                                  {s.score} / {s.maxScore}
+                                </td>
+                                <td>
+                                  {s.maxScore > 0
+                                    ? Math.round((s.score / s.maxScore) * 100)
+                                    : 0}
+                                  %
+                                </td>
+                                <td>
+                                  {new Date(s.submittedAt).toLocaleDateString()}
+                                </td>
+                              </tr>
+                            ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
                 <ul className="list-group list-group-flush">
                   {exam.questions.map((question) => (
                     <li className="list-group-item" key={question.id}>
