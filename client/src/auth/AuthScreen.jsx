@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { USER_ROLES } from '../api/authService'
+import { appConfig } from '../config'
 import { useAuth } from './authState'
 
 const emptyForm = {
@@ -15,7 +16,7 @@ function AuthScreen() {
   const [form, setForm] = useState(emptyForm)
   const [submitting, setSubmitting] = useState(false)
 
-  const isSignup = mode === 'signup'
+  const isSignup = appConfig.features.registration && mode === 'signup'
 
   const updateField = (field, value) => {
     clearAuthError()
@@ -51,7 +52,7 @@ function AuthScreen() {
           <div className="card-body p-4">
             <div className="mb-4">
               <p className="text-uppercase text-primary fw-semibold small mb-1">
-                E-Test System
+                {appConfig.app.name}
               </p>
               <h1 className="h3 mb-1">{isSignup ? 'Create Account' : 'Sign In'}</h1>
               <p className="text-secondary mb-0">
@@ -67,13 +68,15 @@ function AuthScreen() {
               >
                 Login
               </button>
-              <button
-                className={`btn ${isSignup ? 'btn-primary' : 'btn-outline-primary'}`}
-                onClick={() => switchMode('signup')}
-                type="button"
-              >
-                Sign up
-              </button>
+              {appConfig.features.registration && (
+                <button
+                  className={`btn ${isSignup ? 'btn-primary' : 'btn-outline-primary'}`}
+                  onClick={() => switchMode('signup')}
+                  type="button"
+                >
+                  Sign up
+                </button>
+              )}
             </div>
 
             <form className="vstack gap-3" onSubmit={handleSubmit}>
