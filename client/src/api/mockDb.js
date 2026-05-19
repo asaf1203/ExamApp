@@ -3,6 +3,28 @@
  * real API exists. Shape mirrors expected future REST payloads.
  */
 export const mockDb = {
+  users: [
+    {
+      id: 'TCH-1',
+      name: 'Dr. Cohen',
+      email: 'teacher@example.com',
+      password: 'teacher123',
+      role: 'teacher',
+      createdAt: '2026-04-01T08:00:00Z',
+      updatedAt: '2026-04-01T08:00:00Z',
+    },
+    {
+      id: 'STU-12',
+      name: 'Maya Rosen',
+      email: 'student@example.com',
+      password: 'student123',
+      role: 'student',
+      createdAt: '2026-04-02T08:00:00Z',
+      updatedAt: '2026-04-02T08:00:00Z',
+    },
+  ],
+  // Mock bearer-token sessions. A backend can replace this with JWT/session rows.
+  sessions: [],
   exams: [
     {
       id: 'EX-101',

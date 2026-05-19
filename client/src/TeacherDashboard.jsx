@@ -3,6 +3,7 @@
  */
 import { useEffect, useState } from 'react'
 import { getAllExams, getStudentScores } from './api/examService'
+import { appConfig } from './config'
 
 function TeacherDashboard() {
   const [exams, setExams] = useState([])
@@ -64,7 +65,7 @@ function TeacherDashboard() {
           </p>
           <h1 className="h3 mb-1">Exam Dashboard</h1>
           <p className="text-secondary mb-0">
-            Mock API data is loaded from the local exam service.
+            Data source: {appConfig.api.dataSource}.
           </p>
         </div>
         <div className="align-self-md-center">
