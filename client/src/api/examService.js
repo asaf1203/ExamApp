@@ -3,23 +3,7 @@
  * so callers cannot accidentally mutate the shared mockDb singleton.
  */
 import { mockDb } from './mockDb'
-
-/** Artificial delay (ms) so UI loading states behave like a real HTTP round-trip */
-const NETWORK_DELAY_MS = 450
-
-const clone = (value) => structuredClone(value)
-
-/** Wraps synchronous reads/writes in a delayed Promise with error handling */
-const simulateRequest = (handler) =>
-  new Promise((resolve, reject) => {
-    setTimeout(() => {
-      try {
-        resolve(clone(handler()))
-      } catch (error) {
-        reject(error)
-      }
-    }, NETWORK_DELAY_MS)
-  })
+import { simulateRequest } from './mockApiClient'
 
 /** Normalizes user-typed exam IDs for case-insensitive matching */
 const normalizeId = (id) => String(id).trim().toUpperCase()
