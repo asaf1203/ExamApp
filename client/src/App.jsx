@@ -1,16 +1,50 @@
-/**
- * Root layout: role toggle switches between teacher dashboard and student portal.
- * No real auth—state only simulates which UI branch is visible.
- */
 import { useState } from 'react'
 import './App.css'
+import { USER_ROLES } from './api/authService'
+import { AuthProvider } from './auth/AuthContext'
+import AuthScreen from './auth/AuthScreen'
+import { useAuth } from './auth/authState'
 import StudentPortal from './StudentPortal'
 import TeacherDashboard from './TeacherDashboard'
 
-function App() {
-  // 'teacher' | 'student' — drives which child screen is shown below the header card
-  const [role, setRole] = useState('teacher')
-  const isTeacher = role === 'teacher'
+function AuthenticatedApp() {
+  const { currentUser, initializing, logout } = useAuth()
+  const [loggingOut, setLoggingOut] = useState(false)
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+
+    try {
+      await logout()
+    } finally {
+      setLoggingOut(false)
+    }
+  }
+
+  if (initializing) {
+    return (
+      <main className="app-shell bg-body-tertiary">
+        <div className="container py-4 py-md-5">
+          <div className="alert alert-info mb-0" role="status">
+            Checking session...
+          </div>
+        </div>
+      </main>
+    )
+  }
+
+  if (!currentUser) {
+    return (
+      <main className="app-shell bg-body-tertiary">
+        <div className="container py-4 py-md-5">
+          <AuthScreen />
+        </div>
+      </main>
+    )
+  }
+
+  const isTeacher = currentUser.role === USER_ROLES.teacher
+  const isStudent = currentUser.role === USER_ROLES.student
 
   return (
     <main className="app-shell bg-body-tertiary">
@@ -27,29 +61,43 @@ function App() {
               </p>
             </div>
 
-            {/* Simple role picker; replaces a real login until backend exists */}
-            <div className="btn-group" role="group" aria-label="Role login">
+            <div className="d-flex flex-column flex-sm-row align-items-sm-center gap-2 text-start text-sm-end">
+              <div>
+                <span className="badge text-bg-primary text-capitalize mb-1">
+                  {currentUser.role}
+                </span>
+                <div className="fw-semibold">{currentUser.name}</div>
+                <div className="text-secondary small">{currentUser.email}</div>
+              </div>
               <button
-                className={`btn ${isTeacher ? 'btn-primary' : 'btn-outline-primary'}`}
-                onClick={() => setRole('teacher')}
+                className="btn btn-outline-primary"
+                disabled={loggingOut}
+                onClick={handleLogout}
                 type="button"
               >
-                Teacher
-              </button>
-              <button
-                className={`btn ${!isTeacher ? 'btn-primary' : 'btn-outline-primary'}`}
-                onClick={() => setRole('student')}
-                type="button"
-              >
-                Student
+                {loggingOut ? 'Logging out...' : 'Logout'}
               </button>
             </div>
           </div>
         </div>
 
-        {isTeacher ? <TeacherDashboard /> : <StudentPortal />}
+        {isTeacher && <TeacherDashboard />}
+        {isStudent && <StudentPortal />}
+        {!isTeacher && !isStudent && (
+          <div className="alert alert-danger" role="alert">
+            Unsupported user role.
+          </div>
+        )}
       </div>
     </main>
+  )
+}
+
+function App() {
+  return (
+    <AuthProvider>
+      <AuthenticatedApp />
+    </AuthProvider>
   )
 }
 
