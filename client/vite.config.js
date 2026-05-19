@@ -7,4 +7,9 @@ export default defineConfig(({ mode }) => ({
   // A leading-path base like /ExamApp/ breaks Live Server and `vite preview` unless you open /ExamApp/.
   base: mode === 'production' ? './' : '/',
   plugins: [react()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: './src/setupTests.js',
+  },
 }))
