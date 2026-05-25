@@ -24,16 +24,19 @@ const formatCorrectAnswer = (question) => {
 }
 
 function ResultSummary({ attempt }) {
+  const resultsVisible = Boolean(attempt.resultsVisible)
   const percentage =
-    attempt.maxScore > 0 ? Math.round((attempt.score / attempt.maxScore) * 100) : 0
+    resultsVisible && attempt.maxScore > 0
+      ? Math.round((attempt.score / attempt.maxScore) * 100)
+      : null
 
   return (
     <div className="summary-grid">
       <article className="summary-card">
         <span>Score</span>
-        <strong>{percentage}%</strong>
+        <strong>{percentage === null ? '-' : `${percentage}%`}</strong>
         <small>
-          {attempt.score} / {attempt.maxScore} points
+          {resultsVisible ? `${attempt.score} / ${attempt.maxScore} points` : 'Pending review'}
         </small>
       </article>
       <article className="summary-card">
@@ -143,8 +146,11 @@ export function ResultsPage({ attemptId }) {
   }
 
   const { attempt, exam, history } = context
+  const resultsVisible = Boolean(attempt.resultsVisible)
   const percentage =
-    attempt.maxScore > 0 ? Math.round((attempt.score / attempt.maxScore) * 100) : 0
+    resultsVisible && attempt.maxScore > 0
+      ? Math.round((attempt.score / attempt.maxScore) * 100)
+      : null
 
   return (
     <section className="page-stack">
@@ -167,53 +173,65 @@ export function ResultsPage({ attemptId }) {
 
       <ResultSummary attempt={attempt} />
 
-      <section className="app-panel p-3 p-md-4">
-        <div className="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
-          <div>
-            <h2 className="h5 mb-1">Score Breakdown</h2>
-            <p className="text-secondary mb-0">{attempt.teacherFeedback}</p>
-          </div>
-          <div className="score-chip align-self-md-start">
-            <span>Final</span>
-            <strong>{percentage}%</strong>
-          </div>
-        </div>
-        <div className="result-question-list">
-          {exam.questions.map((question, index) => {
-            const feedback = attempt.scoreBreakdown.find(
-              (item) => item.questionId === question.id,
-            )
+      {!resultsVisible && (
+        <section className="app-panel p-3 p-md-4">
+          <h2 className="h5 mb-2">Submission Received</h2>
+          <p className="text-secondary mb-0">
+            Your answers are locked and waiting for teacher review. Grades and
+            feedback will appear here after results are published.
+          </p>
+        </section>
+      )}
 
-            return (
-              <article className="result-question" key={question.id}>
-                <div className="result-question-header">
-                  <div>
-                    <span>Question {index + 1}</span>
-                    <h3 className="h6 mb-0">{question.prompt}</h3>
+      {resultsVisible && (
+        <section className="app-panel p-3 p-md-4">
+          <div className="d-flex flex-column flex-md-row justify-content-between gap-3 mb-3">
+            <div>
+              <h2 className="h5 mb-1">Score Breakdown</h2>
+              <p className="text-secondary mb-0">{attempt.teacherFeedback}</p>
+            </div>
+            <div className="score-chip align-self-md-start">
+              <span>Final</span>
+              <strong>{percentage}%</strong>
+            </div>
+          </div>
+          <div className="result-question-list">
+            {exam.questions.map((question, index) => {
+              const feedback = attempt.scoreBreakdown.find(
+                (item) => item.questionId === question.id,
+              )
+
+              return (
+                <article className="result-question" key={question.id}>
+                  <div className="result-question-header">
+                    <div>
+                      <span>Question {index + 1}</span>
+                      <h3 className="h6 mb-0">{question.prompt}</h3>
+                    </div>
+                    <strong>
+                      {feedback?.score ?? 0} / {question.points}
+                    </strong>
                   </div>
-                  <strong>
-                    {feedback?.score ?? 0} / {question.points}
-                  </strong>
-                </div>
-                <dl className="result-answer-grid">
-                  <div>
-                    <dt>Your answer</dt>
-                    <dd>{formatAnswer(attempt.answers?.[question.id])}</dd>
-                  </div>
-                  <div>
-                    <dt>Expected answer</dt>
-                    <dd>{formatCorrectAnswer(question)}</dd>
-                  </div>
-                  <div>
-                    <dt>Feedback</dt>
-                    <dd>{feedback?.feedback ?? 'No feedback provided.'}</dd>
-                  </div>
-                </dl>
-              </article>
-            )
-          })}
-        </div>
-      </section>
+                  <dl className="result-answer-grid">
+                    <div>
+                      <dt>Your answer</dt>
+                      <dd>{formatAnswer(attempt.answers?.[question.id])}</dd>
+                    </div>
+                    <div>
+                      <dt>Expected answer</dt>
+                      <dd>{formatCorrectAnswer(question)}</dd>
+                    </div>
+                    <div>
+                      <dt>Feedback</dt>
+                      <dd>{feedback?.feedback ?? 'No feedback provided.'}</dd>
+                    </div>
+                  </dl>
+                </article>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       <section className="app-panel p-3 p-md-4">
         <h2 className="h5 mb-3">Past Attempts</h2>
@@ -237,7 +255,9 @@ export function ResultsPage({ attemptId }) {
                   </td>
                   <td>{formatDateTime(item.submittedAt)}</td>
                   <td>
-                    {item.status === ATTEMPT_STATUSES.inProgress || item.score == null
+                    {item.status === ATTEMPT_STATUSES.inProgress ||
+                    !item.resultsVisible ||
+                    item.score == null
                       ? '-'
                       : `${item.score} / ${item.maxScore}`}
                   </td>

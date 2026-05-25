@@ -12,10 +12,12 @@ const examClassNames = {
 }
 
 const submissionClassNames = {
-  [TEACHER_SUBMISSION_STATUSES.submitted]: 'status-badge status-badge-info',
+  [TEACHER_SUBMISSION_STATUSES.expired]: 'status-badge status-badge-danger',
   [TEACHER_SUBMISSION_STATUSES.grading]: 'status-badge status-badge-active',
   [TEACHER_SUBMISSION_STATUSES.graded]: 'status-badge status-badge-submitted',
+  [TEACHER_SUBMISSION_STATUSES.inProgress]: 'status-badge status-badge-active',
   [TEACHER_SUBMISSION_STATUSES.published]: 'status-badge status-badge-success',
+  [TEACHER_SUBMISSION_STATUSES.submitted]: 'status-badge status-badge-info',
 }
 
 export function TeacherExamStatusBadge({ status }) {

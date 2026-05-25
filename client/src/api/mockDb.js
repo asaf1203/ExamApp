@@ -7,11 +7,12 @@
 import { appConfig } from '../config'
 import {
   ATTEMPT_STATUSES,
+  EXAM_LIFECYCLE_STATUSES,
   QUESTION_TYPES,
   calculateMaxScore,
 } from '../models/examModels'
 
-const DB_VERSION = 2
+const DB_VERSION = 3
 
 const isoFromNow = ({ days = 0, hours = 0, minutes = 0 } = {}) =>
   new Date(
@@ -40,7 +41,30 @@ const getStorage = () => {
 const option = (id, label = id) => ({ id, label })
 
 export const createSeedMockDb = () => {
-  const exams = [
+  const teacherId = 'TCH-1'
+  const examAvailability = {
+    'EX-101': {
+      dueAt: isoFromNow({ days: 7 }),
+      opensAt: isoFromNow({ days: -10 }),
+    },
+    'EX-202': {
+      dueAt: isoFromNow({ days: 3 }),
+      opensAt: isoFromNow({ days: -1 }),
+    },
+    'EX-303': {
+      dueAt: isoFromNow({ hours: 4 }),
+      opensAt: isoFromNow({ days: -2 }),
+    },
+    'EX-404': {
+      dueAt: isoFromNow({ days: 8 }),
+      opensAt: isoFromNow({ days: 1 }),
+    },
+    'EX-505': {
+      dueAt: isoFromNow({ days: -1 }),
+      opensAt: isoFromNow({ days: -10 }),
+    },
+  }
+  let exams = [
     {
       id: 'EX-101',
       title: 'Full Stack Foundations',
@@ -251,10 +275,98 @@ export const createSeedMockDb = () => {
     },
   ]
 
+  exams = exams.map((exam) => ({
+    archivedAt: null,
+    availability: examAvailability[exam.id],
+    instructions:
+      'Read each question carefully. Autosave and submission history are enabled.',
+    integrityPolicy:
+      'Leaving the exam window may be recorded in the activity log for review.',
+    maxAttempts: exam.id === 'EX-101' || exam.id === 'EX-303' ? 2 : 1,
+    ownerTeacherId: teacherId,
+    passingGrade: 70,
+    publishedAt: exam.createdAt,
+    status: EXAM_LIFECYCLE_STATUSES.published,
+    updatedAt: exam.createdAt,
+    visibilityScope: 'assigned',
+    ...exam,
+  }))
+
+  exams.push(
+    {
+      id: 'EX-DRAFT-1',
+      archivedAt: null,
+      availability: {
+        dueAt: isoFromNow({ days: 12 }),
+        opensAt: isoFromNow({ days: 5 }),
+      },
+      createdAt: isoFromNow({ days: -2 }),
+      createdBy: 'Dr. Cohen',
+      description: 'Draft assessment used to verify that students cannot see unpublished exams.',
+      difficulty: 'Intermediate',
+      durationMinutes: 40,
+      instructions: 'Draft instructions for the upcoming integrated exam.',
+      integrityPolicy: 'Standard activity logging applies.',
+      maxAttempts: 1,
+      ownerTeacherId: teacherId,
+      passingGrade: 70,
+      publishedAt: null,
+      questions: [
+        {
+          id: 'Q-DRAFT-1',
+          acceptedKeywords: ['shared', 'state', 'service'],
+          points: 10,
+          prompt: 'Explain why shared service boundaries matter.',
+          sampleAnswer: 'Shared services keep teacher and student workflows consistent.',
+          type: QUESTION_TYPES.shortText,
+        },
+      ],
+      status: EXAM_LIFECYCLE_STATUSES.draft,
+      subject: 'Architecture',
+      title: 'Integration Draft Exam',
+      updatedAt: isoFromNow({ hours: -5 }),
+      visibilityScope: 'assigned',
+    },
+    {
+      id: 'EX-ARCH-1',
+      archivedAt: isoFromNow({ days: -3 }),
+      availability: {
+        dueAt: isoFromNow({ days: -5 }),
+        opensAt: isoFromNow({ days: -12 }),
+      },
+      createdAt: isoFromNow({ days: -20 }),
+      createdBy: 'Dr. Cohen',
+      description: 'Archived teacher-managed exam retained for analytics and duplication.',
+      difficulty: 'Foundational',
+      durationMinutes: 30,
+      instructions: 'Closed assessment.',
+      integrityPolicy: 'Closed assessment.',
+      maxAttempts: 1,
+      ownerTeacherId: teacherId,
+      passingGrade: 60,
+      publishedAt: isoFromNow({ days: -15 }),
+      questions: [
+        {
+          id: 'Q-ARCH-1',
+          correctAnswer: '201',
+          options: [option('200'), option('201'), option('404'), option('500')],
+          points: 10,
+          prompt: 'Which HTTP code usually indicates creation?',
+          type: QUESTION_TYPES.singleChoice,
+        },
+      ],
+      status: EXAM_LIFECYCLE_STATUSES.archived,
+      subject: 'Backend',
+      title: 'Archived API Check',
+      updatedAt: isoFromNow({ days: -3 }),
+      visibilityScope: 'assigned',
+    },
+  )
+
   const fullStackMaxScore = calculateMaxScore(exams[0].questions)
   const databaseMaxScore = calculateMaxScore(exams[2].questions)
 
-  return {
+  return normalizeMockDb({
     users: [
       {
         id: 'TCH-1',
@@ -300,8 +412,8 @@ export const createSeedMockDb = () => {
         id: 'ASN-101-STU-12',
         studentId: 'STU-12',
         examId: 'EX-101',
-        opensAt: isoFromNow({ days: -10 }),
-        dueAt: isoFromNow({ days: 7 }),
+        opensAt: examAvailability['EX-101'].opensAt,
+        dueAt: examAvailability['EX-101'].dueAt,
         allowMultipleAttempts: true,
         maxAttempts: 2,
         instructions:
@@ -313,8 +425,8 @@ export const createSeedMockDb = () => {
         id: 'ASN-202-STU-12',
         studentId: 'STU-12',
         examId: 'EX-202',
-        opensAt: isoFromNow({ days: -1 }),
-        dueAt: isoFromNow({ days: 3 }),
+        opensAt: examAvailability['EX-202'].opensAt,
+        dueAt: examAvailability['EX-202'].dueAt,
         allowMultipleAttempts: false,
         maxAttempts: 1,
         instructions: 'Use concise answers and save your work before submitting.',
@@ -325,8 +437,8 @@ export const createSeedMockDb = () => {
         id: 'ASN-303-STU-12',
         studentId: 'STU-12',
         examId: 'EX-303',
-        opensAt: isoFromNow({ days: -2 }),
-        dueAt: isoFromNow({ hours: 4 }),
+        opensAt: examAvailability['EX-303'].opensAt,
+        dueAt: examAvailability['EX-303'].dueAt,
         allowMultipleAttempts: true,
         maxAttempts: 2,
         instructions:
@@ -338,8 +450,8 @@ export const createSeedMockDb = () => {
         id: 'ASN-404-STU-12',
         studentId: 'STU-12',
         examId: 'EX-404',
-        opensAt: isoFromNow({ days: 1 }),
-        dueAt: isoFromNow({ days: 8 }),
+        opensAt: examAvailability['EX-404'].opensAt,
+        dueAt: examAvailability['EX-404'].dueAt,
         allowMultipleAttempts: false,
         maxAttempts: 1,
         instructions: 'This exam opens tomorrow.',
@@ -349,8 +461,8 @@ export const createSeedMockDb = () => {
         id: 'ASN-505-STU-12',
         studentId: 'STU-12',
         examId: 'EX-505',
-        opensAt: isoFromNow({ days: -10 }),
-        dueAt: isoFromNow({ days: -1 }),
+        opensAt: examAvailability['EX-505'].opensAt,
+        dueAt: examAvailability['EX-505'].dueAt,
         allowMultipleAttempts: false,
         maxAttempts: 1,
         instructions: 'This expired exam can no longer be started.',
@@ -509,7 +621,336 @@ export const createSeedMockDb = () => {
         ],
       },
     ],
+    examTemplates: [
+      {
+        id: 'TPL-QUIZ',
+        description: 'Short timed quiz with objective questions.',
+        title: 'Quick Quiz',
+      },
+      {
+        id: 'TPL-FINAL',
+        description: 'Mixed question assessment with manual grading.',
+        title: 'Final Exam',
+      },
+    ],
+    notifications: [],
+    teacherActivity: [
+      {
+        id: 'TACT-SEED-1',
+        createdAt: isoFromNow({ hours: -2 }),
+        message: 'Maya Rosen has an in-progress attempt for Database and API Design.',
+        targetId: 'ATT-303-STU-12-1',
+        type: 'submission',
+      },
+      {
+        id: 'TACT-SEED-2',
+        createdAt: isoFromNow({ days: -1 }),
+        message: 'Published Full Stack Foundations.',
+        targetId: 'EX-101',
+        type: 'publish',
+      },
+    ],
+  })
+}
+
+function getDefaultTeacherId(data) {
+  return data.users?.find((user) => user.role === 'teacher')?.id ?? 'TCH-1'
+}
+
+function buildLegacyAttemptFromSubmission(submission, exam) {
+  const score = (submission.questionGrades ?? []).reduce(
+    (total, grade) => total + Number(grade.score ?? grade.autoScore ?? 0),
+    0,
+  )
+  const maxScore = (submission.questionGrades ?? []).reduce(
+    (total, grade) => total + Number(grade.maxScore || 0),
+    0,
+  )
+
+  return {
+    activityLog: [
+      {
+        id: `ACT-${submission.id}`,
+        createdAt: submission.submittedAt,
+        message: 'Legacy teacher submission imported into shared attempts.',
+        type: 'submitted',
+      },
+    ],
+    answers: submission.answers ?? {},
+    attemptNumber: 1,
+    autosavedAt: submission.completedAt ?? submission.submittedAt,
+    examId: exam.id,
+    expiresAt: submission.completedAt ?? submission.submittedAt,
+    gradedAt: submission.gradedAt ?? null,
+    gradingDraftSavedAt: submission.gradingDraftSavedAt ?? null,
+    id: submission.id,
+    maxScore,
+    resultsVisible: Boolean(submission.resultsVisible),
+    score,
+    scoreBreakdown: submission.questionGrades ?? [],
+    startedAt: submission.startedAt,
+    status:
+      submission.resultsVisible || submission.status === 'published'
+        ? ATTEMPT_STATUSES.graded
+        : submission.status === 'graded'
+          ? ATTEMPT_STATUSES.graded
+          : ATTEMPT_STATUSES.submitted,
+    studentId: submission.studentId,
+    submittedAt: submission.submittedAt,
+    submittedBy: 'student',
+    teacherFeedback: submission.overallFeedback ?? '',
   }
+}
+
+export function normalizeMockDb(data) {
+  const nextDb = {
+    examAssignments: [],
+    examAttempts: [],
+    examTemplates: [],
+    exams: [],
+    notifications: [],
+    sessions: [],
+    studentScores: [],
+    teacherActivity: [],
+    users: [],
+    ...data,
+  }
+  const teacherId = getDefaultTeacherId(nextDb)
+  const teacherName =
+    nextDb.users.find((user) => user.id === teacherId)?.name ?? 'Teacher'
+
+  if (Array.isArray(nextDb.teacherExams)) {
+    nextDb.teacherExams.forEach((teacherExam) => {
+      if (nextDb.exams.some((exam) => exam.id === teacherExam.id)) {
+        return
+      }
+
+      nextDb.exams.push({
+        createdBy: teacherName,
+        difficulty: 'Intermediate',
+        subject: 'Teacher Managed',
+        visibilityScope: 'assigned',
+        ...teacherExam,
+      })
+    })
+  }
+
+  nextDb.exams = nextDb.exams.map((exam) => {
+    const ownerTeacherId = exam.ownerTeacherId ?? teacherId
+    const assignment = nextDb.examAssignments.find((item) => item.examId === exam.id)
+    const availability = {
+      dueAt:
+        exam.availability?.dueAt ??
+        assignment?.dueAt ??
+        new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+      opensAt:
+        exam.availability?.opensAt ??
+        assignment?.opensAt ??
+        new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+    }
+    const status =
+      exam.status ??
+      (exam.archivedAt
+        ? EXAM_LIFECYCLE_STATUSES.archived
+        : EXAM_LIFECYCLE_STATUSES.published)
+
+    return {
+      ...exam,
+      archivedAt: exam.archivedAt ?? null,
+      availability,
+      createdBy: exam.createdBy ?? teacherName,
+      createdAt: exam.createdAt ?? new Date().toISOString(),
+      difficulty: exam.difficulty ?? 'Foundational',
+      instructions:
+        exam.instructions ??
+        assignment?.instructions ??
+        'Read each question carefully and submit before the due date.',
+      integrityPolicy:
+        exam.integrityPolicy ??
+        assignment?.integrityPolicy ??
+        'Autosave is enabled. Teachers can review progress and submission activity.',
+      maxAttempts: Number(exam.maxAttempts ?? assignment?.maxAttempts ?? 1),
+      ownerTeacherId,
+      passingGrade: Number(exam.passingGrade ?? 70),
+      publishedAt:
+        exam.publishedAt ??
+        (status === EXAM_LIFECYCLE_STATUSES.published ? exam.createdAt : null),
+      status,
+      subject: exam.subject ?? 'General',
+      updatedAt: exam.updatedAt ?? exam.createdAt ?? new Date().toISOString(),
+      visibilityScope: exam.visibilityScope ?? 'assigned',
+    }
+  })
+
+  if (Array.isArray(nextDb.teacherSubmissions)) {
+    nextDb.teacherSubmissions.forEach((submission) => {
+      if (nextDb.examAttempts.some((attempt) => attempt.id === submission.id)) {
+        return
+      }
+
+      const exam = nextDb.exams.find((item) => item.id === submission.examId)
+
+      if (exam) {
+        nextDb.examAttempts.push(buildLegacyAttemptFromSubmission(submission, exam))
+      }
+    })
+  }
+
+  nextDb.studentScores.forEach((score) => {
+    if (
+      nextDb.examAttempts.some(
+        (attempt) =>
+          attempt.id === score.id ||
+          (attempt.studentId === score.studentId &&
+            attempt.examId === score.examId &&
+            attempt.status === ATTEMPT_STATUSES.graded),
+      )
+    ) {
+      return
+    }
+
+    const exam = nextDb.exams.find((item) => item.id === score.examId)
+    const student = nextDb.users.find((user) => user.id === score.studentId)
+
+    if (!exam || !student) {
+      return
+    }
+
+    const answers = Object.fromEntries(
+      (score.answers ?? []).map((answer) => [answer.questionId, answer.answer]),
+    )
+    const answeredMaxScore = (exam.questions ?? []).reduce(
+      (total, question) =>
+        answers[question.id] === undefined ? total : total + Number(question.points || 0),
+      0,
+    )
+
+    nextDb.examAttempts.push({
+      activityLog: [
+        {
+          id: `ACT-${score.id}`,
+          createdAt: score.submittedAt,
+          message: 'Legacy score imported into shared attempts.',
+          type: 'submitted',
+        },
+      ],
+      answers,
+      attemptNumber: 1,
+      autosavedAt: score.submittedAt,
+      examId: score.examId,
+      expiresAt: score.submittedAt,
+      gradedAt: score.submittedAt,
+      gradingDraftSavedAt: null,
+      id: score.id,
+      maxScore: score.maxScore,
+      resultsVisible: true,
+      score: score.score,
+      scoreBreakdown: (exam.questions ?? []).map((question) => {
+        const answer = answers[question.id]
+        const importedScore =
+          answer === undefined || answeredMaxScore <= 0
+            ? 0
+            : Math.round((Number(score.score || 0) * Number(question.points || 0)) / answeredMaxScore)
+
+        return {
+          answer: answer ?? '',
+          feedback: answer === undefined ? 'No answer submitted.' : 'Imported graded answer.',
+          isCorrect:
+            score.answers?.find((item) => item.questionId === question.id)?.isCorrect ??
+            false,
+          maxScore: Number(question.points || 0),
+          overridden: false,
+          questionId: question.id,
+          score: importedScore,
+        }
+      }),
+      startedAt: score.submittedAt,
+      status: ATTEMPT_STATUSES.graded,
+      studentId: score.studentId,
+      submittedAt: score.submittedAt,
+      submittedBy: 'student',
+      teacherFeedback: 'Imported graded score.',
+    })
+  })
+
+  nextDb.examAttempts = nextDb.examAttempts.map((attempt) => {
+    const exam = nextDb.exams.find((item) => item.id === attempt.examId)
+    const scoreBreakdown = attempt.scoreBreakdown ?? []
+    const maxScore =
+      Number(attempt.maxScore) ||
+      (exam ? calculateMaxScore(exam.questions ?? []) : 0)
+
+    return {
+      ...attempt,
+      activityLog: attempt.activityLog ?? [],
+      answers: attempt.answers ?? {},
+      attemptNumber: Number(attempt.attemptNumber ?? 1),
+      autosavedAt: attempt.autosavedAt ?? attempt.startedAt,
+      expiresAt: attempt.expiresAt ?? attempt.submittedAt ?? attempt.startedAt,
+      gradedAt: attempt.gradedAt ?? (attempt.status === ATTEMPT_STATUSES.graded ? attempt.submittedAt : null),
+      gradingDraftSavedAt: attempt.gradingDraftSavedAt ?? null,
+      maxScore,
+      resultsVisible:
+        attempt.resultsVisible ?? attempt.status === ATTEMPT_STATUSES.graded,
+      score: attempt.score ?? null,
+      scoreBreakdown,
+      submittedAt: attempt.submittedAt ?? null,
+      submittedBy: attempt.submittedBy ?? null,
+      teacherFeedback: attempt.teacherFeedback ?? '',
+    }
+  })
+
+  nextDb.notifications = Array.isArray(nextDb.notifications) ? nextDb.notifications : []
+  nextDb.teacherActivity = Array.isArray(nextDb.teacherActivity)
+    ? nextDb.teacherActivity
+    : []
+  nextDb.examTemplates = Array.isArray(nextDb.examTemplates)
+    ? nextDb.examTemplates
+    : [
+        {
+          id: 'TPL-QUIZ',
+          description: 'Short timed quiz with objective questions.',
+          title: 'Quick Quiz',
+        },
+      ]
+
+  const publishedExams = nextDb.exams.filter(
+    (exam) => exam.status === EXAM_LIFECYCLE_STATUSES.published && !exam.archivedAt,
+  )
+  const students = nextDb.users.filter((user) => user.role === 'student')
+
+  publishedExams.forEach((exam) => {
+    students.forEach((student) => {
+      const existingAssignment = nextDb.examAssignments.find(
+        (assignment) =>
+          assignment.examId === exam.id && assignment.studentId === student.id,
+      )
+      const assignment = {
+        allowMultipleAttempts: Number(exam.maxAttempts ?? 1) > 1,
+        dueAt: exam.availability.dueAt,
+        examId: exam.id,
+        integrityPolicy: exam.integrityPolicy,
+        instructions: exam.instructions,
+        maxAttempts: Number(exam.maxAttempts ?? 1),
+        opensAt: exam.availability.opensAt,
+        studentId: student.id,
+      }
+
+      if (existingAssignment) {
+        Object.assign(existingAssignment, assignment)
+      } else {
+        nextDb.examAssignments.push({
+          ...assignment,
+          id: `ASN-${exam.id}-${student.id}`,
+        })
+      }
+    })
+  })
+
+  delete nextDb.teacherExams
+  delete nextDb.teacherSubmissions
+
+  return nextDb
 }
 
 const loadMockDb = () => {
@@ -523,8 +964,8 @@ const loadMockDb = () => {
     const raw = storage.getItem(appConfig.mock.dbStorageKey)
     const parsed = raw ? JSON.parse(raw) : null
 
-    if (parsed?.version === DB_VERSION && parsed?.data?.users && parsed?.data?.exams) {
-      return parsed.data
+    if (parsed?.data?.users && parsed?.data?.exams) {
+      return normalizeMockDb(parsed.data)
     }
   } catch {
     storage.removeItem(appConfig.mock.dbStorageKey)

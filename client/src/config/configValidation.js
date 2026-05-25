@@ -58,7 +58,11 @@ export const validateConfig = (config) => {
     errors.push('Auth session TTL values must be positive numbers.')
   }
 
-  if (!isPositiveNumber(config.ui.toastDurationMs) || !isPositiveNumber(config.ui.countdownTickMs)) {
+  if (
+    !isPositiveNumber(config.ui.toastDurationMs) ||
+    !isPositiveNumber(config.ui.countdownTickMs) ||
+    !isPositiveNumber(config.ui.notificationPollMs)
+  ) {
     errors.push('UI timing values must be positive numbers.')
   }
 

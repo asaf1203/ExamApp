@@ -1,3 +1,5 @@
+export { EXAM_LIFECYCLE_STATUSES, VISIBILITY_SCOPES } from './domainModels'
+
 export const QUESTION_TYPES = Object.freeze({
   singleChoice: 'single-choice',
   multipleChoice: 'multiple-choice',

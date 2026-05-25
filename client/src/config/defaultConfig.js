@@ -90,6 +90,7 @@ export const defaultPublicConfig = Object.freeze({
   ui: Object.freeze({
     countdownTickMs: 1000,
     defaultTheme: 'system',
+    notificationPollMs: 30000,
     themeStorageKey: 'examPlatform.theme',
     toastDurationMs: 4500,
   }),
