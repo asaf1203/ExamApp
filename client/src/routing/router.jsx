@@ -14,6 +14,9 @@ export const ROUTES = Object.freeze({
   studentDashboard: '/student',
   studentProfile: '/student/profile',
   teacherDashboard: '/teacher',
+  teacherExams: '/teacher/exams',
+  teacherExamCreate: '/teacher/exams/new',
+  teacherSubmissions: '/teacher/submissions',
 })
 
 const RouterContext = createContext(null)
@@ -37,6 +40,15 @@ export const buildExamTakingPath = (examId, attemptId) =>
 export const buildResultsPath = (attemptId) =>
   `/student/results/${encodeURIComponent(attemptId)}`
 
+export const buildTeacherExamEditorPath = (examId) =>
+  `/teacher/exams/${encodeURIComponent(examId)}/edit`
+
+export const buildTeacherExamPreviewPath = (examId) =>
+  `/teacher/exams/${encodeURIComponent(examId)}/preview`
+
+export const buildTeacherSubmissionPath = (submissionId) =>
+  `/teacher/submissions/${encodeURIComponent(submissionId)}`
+
 export const matchRoute = (path) => {
   const normalizedPath = normalizePath(path)
   const segments = normalizedPath.split('/').filter(Boolean).map(decodeURIComponent)
@@ -49,8 +61,46 @@ export const matchRoute = (path) => {
     return { name: 'login', params: {}, path: normalizedPath }
   }
 
-  if (segments[0] === 'teacher' && segments.length === 1) {
-    return { name: 'teacherDashboard', params: {}, path: normalizedPath }
+  if (segments[0] === 'teacher') {
+    if (segments.length === 1) {
+      return { name: 'teacherDashboard', params: {}, path: normalizedPath }
+    }
+
+    if (segments[1] === 'exams' && segments.length === 2) {
+      return { name: 'teacherExams', params: {}, path: normalizedPath }
+    }
+
+    if (segments[1] === 'exams' && segments[2] === 'new') {
+      return { name: 'teacherExamCreate', params: {}, path: normalizedPath }
+    }
+
+    if (segments[1] === 'exams' && segments[3] === 'edit') {
+      return {
+        name: 'teacherExamEdit',
+        params: { examId: segments[2] },
+        path: normalizedPath,
+      }
+    }
+
+    if (segments[1] === 'exams' && segments[3] === 'preview') {
+      return {
+        name: 'teacherExamPreview',
+        params: { examId: segments[2] },
+        path: normalizedPath,
+      }
+    }
+
+    if (segments[1] === 'submissions' && segments.length === 2) {
+      return { name: 'teacherSubmissions', params: {}, path: normalizedPath }
+    }
+
+    if (segments[1] === 'submissions' && segments[2]) {
+      return {
+        name: 'teacherSubmissionReview',
+        params: { submissionId: segments[2] },
+        path: normalizedPath,
+      }
+    }
   }
 
   if (segments[0] === 'student') {

@@ -17,8 +17,18 @@ const navItems = [
     roles: [USER_ROLES.student],
   },
   {
-    label: 'Teacher',
+    label: 'Dashboard',
     path: ROUTES.teacherDashboard,
+    roles: [USER_ROLES.teacher],
+  },
+  {
+    label: 'Exams',
+    path: ROUTES.teacherExams,
+    roles: [USER_ROLES.teacher],
+  },
+  {
+    label: 'Submissions',
+    path: ROUTES.teacherSubmissions,
     roles: [USER_ROLES.teacher],
   },
 ]
@@ -72,7 +82,14 @@ export function AppLayout({ children }) {
               {availableNavItems.map((item) => (
                 <button
                   aria-current={path === item.path ? 'page' : undefined}
-                  className={`nav-pill ${path === item.path ? 'active' : ''}`}
+                  className={`nav-pill ${
+                    path === item.path ||
+                    (currentUser.role === USER_ROLES.teacher &&
+                      item.path !== ROUTES.teacherDashboard &&
+                      path.startsWith(item.path))
+                      ? 'active'
+                      : ''
+                  }`}
                   key={item.path}
                   onClick={() => navigate(item.path)}
                   type="button"

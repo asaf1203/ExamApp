@@ -9,6 +9,12 @@ import { StudentDashboard } from './features/student-exams/pages/StudentDashboar
 import { ExamInstructionsPage } from './features/student-exams/pages/ExamInstructionsPage'
 import { ExamTakingPage } from './features/student-exams/pages/ExamTakingPage'
 import { ResultsPage } from './features/student-exams/pages/ResultsPage'
+import { TeacherDashboardPage } from './features/teacher-exams/pages/TeacherDashboardPage'
+import { TeacherExamEditorPage } from './features/teacher-exams/pages/TeacherExamEditorPage'
+import { TeacherExamListPage } from './features/teacher-exams/pages/TeacherExamListPage'
+import { TeacherExamPreviewPage } from './features/teacher-exams/pages/TeacherExamPreviewPage'
+import { TeacherSubmissionReviewPage } from './features/teacher-exams/pages/TeacherSubmissionReviewPage'
+import { TeacherSubmissionsPage } from './features/teacher-exams/pages/TeacherSubmissionsPage'
 import { AppLayout } from './layout/AppLayout'
 import { NotFoundPage } from './pages/NotFoundPage'
 import { ProfilePage } from './pages/ProfilePage'
@@ -18,7 +24,6 @@ import {
   RouterProvider,
   useRouter,
 } from './routing/router'
-import TeacherDashboard from './TeacherDashboard'
 import { ErrorBoundary } from './ui/ErrorBoundary'
 import { ThemeProvider } from './ui/ThemeContext'
 import { ToastProvider } from './ui/ToastContext'
@@ -30,7 +35,15 @@ const studentRouteNames = new Set([
   'examTaking',
   'examResults',
 ])
-const teacherRouteNames = new Set(['teacherDashboard'])
+const teacherRouteNames = new Set([
+  'teacherDashboard',
+  'teacherExams',
+  'teacherExamCreate',
+  'teacherExamEdit',
+  'teacherExamPreview',
+  'teacherSubmissions',
+  'teacherSubmissionReview',
+])
 
 const defaultPathForRole = (role) =>
   role === USER_ROLES.teacher ? ROUTES.teacherDashboard : ROUTES.studentDashboard
@@ -106,7 +119,19 @@ function RouteSwitch() {
     case 'examResults':
       return <ResultsPage attemptId={route.params.attemptId} />
     case 'teacherDashboard':
-      return <TeacherDashboard />
+      return <TeacherDashboardPage />
+    case 'teacherExams':
+      return <TeacherExamListPage />
+    case 'teacherExamCreate':
+      return <TeacherExamEditorPage mode="create" />
+    case 'teacherExamEdit':
+      return <TeacherExamEditorPage examId={route.params.examId} />
+    case 'teacherExamPreview':
+      return <TeacherExamPreviewPage examId={route.params.examId} />
+    case 'teacherSubmissions':
+      return <TeacherSubmissionsPage />
+    case 'teacherSubmissionReview':
+      return <TeacherSubmissionReviewPage submissionId={route.params.submissionId} />
     case 'home':
     case 'login':
       return null
