@@ -7,6 +7,7 @@
 import { ApiError, apiClient, mockRequest } from './apiClient'
 import { USER_ROLES, requireMockRole } from './authService'
 import { mockDb, persistMockDb } from './mockDb'
+import { appConfig } from '../config'
 import {
   QUESTION_TYPES,
   gradeQuestionAnswer,
@@ -873,7 +874,7 @@ export const listTeacherDashboard = async (params = {}) =>
     ? listTeacherDashboardMock(params)
     : apiClient.get(`/teacher/dashboard${toQueryString(params)}`, {
         cacheKey: `teacher:dashboard:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const listTeacherExams = async (params = {}) =>
@@ -881,7 +882,7 @@ export const listTeacherExams = async (params = {}) =>
     ? listTeacherExamsMock(params)
     : apiClient.get(`/teacher/exams${toQueryString(params)}`, {
         cacheKey: `teacher:exams:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const getTeacherExam = async (examId) =>
@@ -932,7 +933,7 @@ export const listTeacherSubmissions = async (params = {}) =>
     ? listTeacherSubmissionsMock(params)
     : apiClient.get(`/teacher/submissions${toQueryString(params)}`, {
         cacheKey: `teacher:submissions:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const getTeacherSubmission = async (submissionId) =>

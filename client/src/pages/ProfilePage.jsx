@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
 import { requestPasswordReset } from '../api/authService'
 import { getStudentActivity } from '../api/examService'
+import { ConfigDebugPanel } from '../components/ConfigDebugPanel'
 import { LoadingState } from '../components/LoadingState'
-import { appConfig } from '../config'
+import { isFeatureEnabled } from '../config'
 import { useAuth } from '../auth/authState'
 import { useToast } from '../ui/ToastContext'
 import { formatDateTime } from '../utils/dateTime'
@@ -90,7 +91,7 @@ export function ProfilePage() {
               <dd>{formatDateTime(currentUser.lastLoginAt)}</dd>
             </div>
           </dl>
-          {appConfig.features.passwordReset && (
+          {isFeatureEnabled('passwordReset') && (
             <button
               className="btn btn-outline-primary mt-3"
               disabled={resetLoading}
@@ -145,6 +146,8 @@ export function ProfilePage() {
           </div>
         )}
       </section>
+
+      <ConfigDebugPanel />
     </section>
   )
 }

@@ -1,7 +1,7 @@
-import { appConfig } from '../config'
+import { appConfig, configService } from '../config'
 import { getAuthToken } from './authTokenStorage'
 
-export const MOCK_API_DELAY_MS = appConfig.api.mockDelayMs
+export const MOCK_API_DELAY_MS = appConfig.mock.latencyMs
 
 const clone = (value) => structuredClone(value)
 
@@ -66,7 +66,7 @@ export const apiCache = Object.freeze({
 
     return clone(cached.value)
   },
-  set(key, value, ttlMs = 30000) {
+  set(key, value, ttlMs = appConfig.api.cacheTtlMs) {
     responseCache.set(key, {
       expiresAt: Date.now() + ttlMs,
       value: clone(value),
@@ -123,6 +123,11 @@ const shouldRetry = (error, attempt) =>
   attempt < appConfig.api.retryCount &&
   (!error.status || error.status >= 500 || error.status === 408)
 
+const wait = (delayMs) =>
+  new Promise((resolve) => {
+    setTimeout(resolve, delayMs)
+  })
+
 /**
  * Mock transport used by the current in-memory services. Keeping it next to the
  * HTTP transport gives service modules one API-client boundary to depend on.
@@ -132,9 +137,10 @@ export const mockRequest = (handler, options = {}) =>
     setTimeout(() => {
       try {
         if (
-          appConfig.api.mockErrorRate > 0 &&
+          appConfig.mock.enableErrors &&
+          appConfig.mock.errorRate > 0 &&
           !options.skipErrorSimulation &&
-          Math.random() < appConfig.api.mockErrorRate
+          Math.random() < appConfig.mock.errorRate
         ) {
           throw new ApiError('Temporary mock API failure. Please retry.', {
             code: 'MOCK_NETWORK_ERROR',
@@ -151,7 +157,7 @@ export const mockRequest = (handler, options = {}) =>
       } catch (error) {
         reject(normalizeApiError(error))
       }
-    }, appConfig.api.mockDelayMs)
+    }, appConfig.mock.enableLatency ? appConfig.mock.latencyMs : 0)
   })
 
 const buildUrl = (path) => {
@@ -225,6 +231,10 @@ export const httpRequest = async (path, options = {}) => {
   try {
     while (true) {
       try {
+        if (appConfig.logging.enableRequestLogging) {
+          console.info('[api] request', request.options.method, request.path)
+        }
+
         const response = await fetch(buildUrl(request.path), {
           ...request.options,
           signal: controller.signal,
@@ -250,6 +260,7 @@ export const httpRequest = async (path, options = {}) => {
 
         if (shouldRetry(normalizedError, attempt)) {
           attempt += 1
+          await wait(appConfig.api.retryDelayMs)
           continue
         }
 
@@ -305,9 +316,11 @@ export const httpRequestWithoutRetry = async (path, options = {}) => {
 
 export const apiClient = Object.freeze({
   baseUrl: appConfig.api.baseUrl,
+  authApiUrl: appConfig.api.authApiUrl,
   dataSource: appConfig.api.dataSource,
-  isMock: appConfig.api.isMock,
+  isMock: configService.isMockApiEnabled(),
   mockRequest,
+  version: appConfig.api.version,
   get: (path, options) => httpRequest(path, { ...options, method: 'GET' }),
   post: (path, body, options) =>
     httpRequest(path, { ...options, body, method: 'POST' }),
