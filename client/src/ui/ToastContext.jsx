@@ -7,6 +7,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { appConfig } from '../config'
 
 const ToastContext = createContext(null)
 
@@ -33,7 +34,10 @@ export function ToastProvider({ children }) {
       const toast = { id, message, title, tone }
 
       setToasts((current) => [...current, toast])
-      const timerId = window.setTimeout(() => dismissToast(id), 4500)
+      const timerId = window.setTimeout(
+        () => dismissToast(id),
+        appConfig.ui.toastDurationMs,
+      )
       timersRef.current.set(id, timerId)
 
       return id

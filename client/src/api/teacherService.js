@@ -1,31 +1,45 @@
 /**
  * Teacher exam-management service facade.
  *
- * Components depend on this module, not mockDb. The HTTP paths mirror future
- * REST resources for multi-teacher exam management and grading.
+ * Components depend on this module, not mockDb. The mock implementation now
+ * reads/writes the same exam and attempt records used by the student portal.
+ * TODO backend: replace mock branches with REST calls while keeping signatures.
  */
 import { ApiError, apiClient, mockRequest } from './apiClient'
 import { USER_ROLES, requireMockRole } from './authService'
-import { mockDb, persistMockDb } from './mockDb'
 import {
+  appendAttemptActivity,
+  appendNotification,
+  appendNotificationsForRole,
+  appendTeacherActivity,
+  applyTeacherGradesToAttempt,
+  attemptToTeacherSubmission,
+  cloneEntity,
+  createMockId,
+  getExamAttempts,
+  getStudentName,
+  getTeacherOwnedExams,
+  persistSharedMockDb,
+  syncPublishedExamAssignments,
+  updateStudentScoreRecord,
+} from './mockExamRepository'
+import { mockDb } from './mockDb'
+import { appConfig } from '../config'
+import {
+  ATTEMPT_STATUSES,
   QUESTION_TYPES,
-  gradeQuestionAnswer,
+  calculateMaxScore,
   normalizeOptions,
 } from '../models/examModels'
+import { EXAM_LIFECYCLE_STATUSES } from '../models/domainModels'
 import {
   TEACHER_EXAM_FILTERS,
   TEACHER_EXAM_STATUSES,
   TEACHER_SUBMISSION_STATUSES,
   createEmptyTeacherExam,
   createEmptyTeacherQuestion,
-  getSubmissionMaxScore,
-  getSubmissionPercentage,
-  getSubmissionScore,
   getTeacherExamMaxScore,
 } from '../models/teacherModels'
-
-const createId = (prefix) =>
-  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`.toUpperCase()
 
 const toQueryString = (params = {}) => {
   const searchParams = new URLSearchParams()
@@ -40,13 +54,6 @@ const toQueryString = (params = {}) => {
 
   return query ? `?${query}` : ''
 }
-
-const clone = (value) => structuredClone(value)
-
-const isoFromNow = ({ days = 0, hours = 0, minutes = 0 } = {}) =>
-  new Date(
-    Date.now() + days * 24 * 60 * 60 * 1000 + hours * 60 * 60 * 1000 + minutes * 60 * 1000,
-  ).toISOString()
 
 const toLocalDateTimeInput = (isoValue) => {
   if (!isoValue) {
@@ -72,326 +79,10 @@ const fromLocalDateTimeInput = (value) => {
   return Number.isNaN(date.getTime()) ? '' : date.toISOString()
 }
 
-const option = (id, label = id) => ({ id, label })
-
-const seedQuestion = (id, type, prompt, points, extra = {}) => ({
-  id,
-  attachments: [],
-  explanation: extra.explanation ?? '',
-  points,
-  prompt,
-  required: extra.required ?? true,
-  type,
-  ...extra,
-})
-
-const buildQuestionGrades = (exam, answers) =>
-  exam.questions.map((question) => {
-    const grade = gradeQuestionAnswer(question, answers?.[question.id])
-
-    return {
-      autoScore: grade.score,
-      feedback: grade.feedback,
-      isCorrect: grade.isCorrect,
-      maxScore: grade.maxScore,
-      overridden: false,
-      questionId: question.id,
-      score: grade.score,
-    }
-  })
-
-const createTeacherSubmission = ({
-  answers,
-  completedMinutes,
-  exam,
-  id,
-  status = TEACHER_SUBMISSION_STATUSES.submitted,
-  studentId,
-  studentName,
-  submittedOffset,
-}) => {
-  const submittedAt = isoFromNow(submittedOffset)
-  const startedAt = isoFromNow({
-    days: submittedOffset.days ?? 0,
-    hours: submittedOffset.hours ?? 0,
-    minutes: (submittedOffset.minutes ?? 0) - completedMinutes,
-  })
-  const questionGrades = buildQuestionGrades(exam, answers)
-
-  return {
-    id,
-    answers,
-    completedAt: submittedAt,
-    durationMinutes: completedMinutes,
-    examId: exam.id,
-    gradingDraftSavedAt: null,
-    overallFeedback: '',
-    questionGrades,
-    resultsVisible: status === TEACHER_SUBMISSION_STATUSES.published,
-    startedAt,
-    status,
-    studentId,
-    studentName,
-    submittedAt,
-  }
-}
-
-const seedTeacherExams = (teacherId) => {
-  const exams = [
-    {
-      id: 'TEX-101',
-      archivedAt: null,
-      availability: {
-        dueAt: isoFromNow({ days: 9 }),
-        opensAt: isoFromNow({ days: -2 }),
-      },
-      createdAt: isoFromNow({ days: -18 }),
-      description:
-        'Assessment covering REST boundaries, frontend state, and resilient UI flows.',
-      durationMinutes: 75,
-      instructions:
-        'Students must complete all questions. Autosave and timer behavior are enabled.',
-      maxAttempts: 2,
-      ownerTeacherId: teacherId,
-      passingGrade: 70,
-      publishedAt: isoFromNow({ days: -5 }),
-      questions: [
-        seedQuestion(
-          'TQ-101-1',
-          QUESTION_TYPES.singleChoice,
-          'Which layer should own API retry and timeout behavior?',
-          10,
-          {
-            correctAnswer: 'API client',
-            options: [
-              option('API client'),
-              option('Page component'),
-              option('CSS file'),
-              option('Route label'),
-            ],
-          },
-        ),
-        seedQuestion(
-          'TQ-101-2',
-          QUESTION_TYPES.multipleChoice,
-          'Select backend-ready frontend concerns.',
-          15,
-          {
-            correctAnswers: ['Service boundary', 'Token storage', 'Error mapping'],
-            options: [
-              option('Service boundary'),
-              option('Token storage'),
-              option('Hard-coded mock imports'),
-              option('Error mapping'),
-            ],
-          },
-        ),
-        seedQuestion(
-          'TQ-101-3',
-          QUESTION_TYPES.longText,
-          'Explain how route guards and backend authorization should work together.',
-          25,
-          {
-            acceptedKeywords: ['guard', 'server', 'role'],
-            sampleAnswer:
-              'Client guards protect UX; backend middleware enforces token and role permissions.',
-          },
-        ),
-      ],
-      status: TEACHER_EXAM_STATUSES.published,
-      title: 'Production Frontend Architecture',
-      updatedAt: isoFromNow({ days: -1 }),
-    },
-    {
-      id: 'TEX-202',
-      archivedAt: null,
-      availability: {
-        dueAt: isoFromNow({ days: 14 }),
-        opensAt: isoFromNow({ days: 4 }),
-      },
-      createdAt: isoFromNow({ days: -4 }),
-      description: 'Draft exam for React state, effects, and controlled forms.',
-      durationMinutes: 60,
-      instructions: 'Draft instructions for the upcoming React exam.',
-      maxAttempts: 1,
-      ownerTeacherId: teacherId,
-      passingGrade: 65,
-      publishedAt: null,
-      questions: [
-        seedQuestion(
-          'TQ-202-1',
-          QUESTION_TYPES.shortText,
-          'What makes a controlled form field controlled?',
-          10,
-          {
-            acceptedKeywords: ['value', 'state', 'onChange'],
-            sampleAnswer: 'The value is driven by state and updated through onChange.',
-          },
-        ),
-      ],
-      status: TEACHER_EXAM_STATUSES.draft,
-      title: 'React State Workshop',
-      updatedAt: isoFromNow({ hours: -6 }),
-    },
-    {
-      id: 'TEX-303',
-      archivedAt: isoFromNow({ days: -8 }),
-      availability: {
-        dueAt: isoFromNow({ days: -15 }),
-        opensAt: isoFromNow({ days: -25 }),
-      },
-      createdAt: isoFromNow({ days: -40 }),
-      description: 'Archived API design quiz kept for analytics and duplication.',
-      durationMinutes: 35,
-      instructions: 'Closed assessment.',
-      maxAttempts: 1,
-      ownerTeacherId: teacherId,
-      passingGrade: 60,
-      publishedAt: isoFromNow({ days: -30 }),
-      questions: [
-        seedQuestion(
-          'TQ-303-1',
-          QUESTION_TYPES.singleChoice,
-          'Which HTTP response code indicates validation failure?',
-          10,
-          {
-            correctAnswer: '422',
-            options: [option('200'), option('201'), option('422'), option('500')],
-          },
-        ),
-      ],
-      status: TEACHER_EXAM_STATUSES.archived,
-      title: 'API Design Quiz',
-      updatedAt: isoFromNow({ days: -8 }),
-    },
-  ]
-
-  const submissions = [
-    createTeacherSubmission({
-      answers: {
-        'TQ-101-1': 'API client',
-        'TQ-101-2': ['Service boundary', 'Token storage', 'Error mapping'],
-        'TQ-101-3':
-          'Client guard handles navigation while the server checks token role and ownership.',
-      },
-      completedMinutes: 48,
-      exam: exams[0],
-      id: 'TSUB-101-1',
-      status: TEACHER_SUBMISSION_STATUSES.graded,
-      studentId: 'STU-12',
-      studentName: 'Maya Rosen',
-      submittedOffset: { days: -1, hours: -3 },
-    }),
-    createTeacherSubmission({
-      answers: {
-        'TQ-101-1': 'Page component',
-        'TQ-101-2': ['Service boundary', 'Hard-coded mock imports'],
-        'TQ-101-3': 'The guard checks users.',
-      },
-      completedMinutes: 55,
-      exam: exams[0],
-      id: 'TSUB-101-2',
-      status: TEACHER_SUBMISSION_STATUSES.submitted,
-      studentId: 'STU-18',
-      studentName: 'Daniel Amir',
-      submittedOffset: { hours: -7 },
-    }),
-    createTeacherSubmission({
-      answers: {
-        'TQ-101-1': 'API client',
-        'TQ-101-2': ['Service boundary', 'Token storage'],
-        'TQ-101-3':
-          'Routes keep the UI in the right place and backend authorization prevents forbidden access.',
-      },
-      completedMinutes: 41,
-      exam: exams[0],
-      id: 'TSUB-101-3',
-      status: TEACHER_SUBMISSION_STATUSES.published,
-      studentId: 'STU-25',
-      studentName: 'Noa Katz',
-      submittedOffset: { days: -2, hours: -2 },
-    }),
-  ]
-
-  submissions[0].overallFeedback = 'Good work. The long answer is concise and accurate.'
-  submissions[2].overallFeedback = 'Published result. Strong API boundary explanation.'
-
-  return { exams, submissions }
-}
-
-const ensureTeacherMockData = (teacherId) => {
-  if (!Array.isArray(mockDb.teacherExams) || !Array.isArray(mockDb.teacherSubmissions)) {
-    const seed = seedTeacherExams(teacherId)
-    mockDb.teacherExams = seed.exams
-    mockDb.teacherSubmissions = seed.submissions
-  }
-
-  if (!Array.isArray(mockDb.teacherActivity)) {
-    mockDb.teacherActivity = [
-      {
-        id: 'TACT-1',
-        createdAt: isoFromNow({ hours: -2 }),
-        message: 'Saved grading draft for Daniel Amir.',
-        targetId: 'TSUB-101-2',
-        type: 'grading',
-      },
-      {
-        id: 'TACT-2',
-        createdAt: isoFromNow({ hours: -6 }),
-        message: 'Updated React State Workshop draft.',
-        targetId: 'TEX-202',
-        type: 'exam',
-      },
-      {
-        id: 'TACT-3',
-        createdAt: isoFromNow({ days: -1 }),
-        message: 'Published Production Frontend Architecture.',
-        targetId: 'TEX-101',
-        type: 'publish',
-      },
-    ]
-  }
-
-  if (!Array.isArray(mockDb.examTemplates)) {
-    mockDb.examTemplates = [
-      {
-        id: 'TPL-QUIZ',
-        description: 'Short timed quiz with one section and objective questions.',
-        title: 'Quick Quiz',
-      },
-      {
-        id: 'TPL-FINAL',
-        description: 'Longer assessment with mixed question types and manual grading.',
-        title: 'Final Exam',
-      },
-    ]
-  }
-
-  persistMockDb()
-}
-
-const appendTeacherActivity = (type, message, targetId) => {
-  mockDb.teacherActivity = mockDb.teacherActivity ?? []
-  mockDb.teacherActivity.unshift({
-    id: createId('TACT'),
-    createdAt: new Date().toISOString(),
-    message,
-    targetId,
-    type,
-  })
-}
-
-const getTeacher = () => {
-  const teacher = requireMockRole(USER_ROLES.teacher)
-  ensureTeacherMockData(teacher.id)
-  return teacher
-}
-
-const getTeacherExams = (teacherId) =>
-  (mockDb.teacherExams ?? []).filter((exam) => exam.ownerTeacherId === teacherId)
+const getTeacher = () => requireMockRole(USER_ROLES.teacher)
 
 const findTeacherExam = (teacherId, examId) => {
-  const exam = getTeacherExams(teacherId).find((item) => item.id === examId)
+  const exam = getTeacherOwnedExams(teacherId).find((item) => item.id === examId)
 
   if (!exam) {
     throw new ApiError('Teacher exam was not found.', {
@@ -403,25 +94,28 @@ const findTeacherExam = (teacherId, examId) => {
   return exam
 }
 
-const findTeacherSubmission = (teacherId, submissionId) => {
-  const examIds = new Set(getTeacherExams(teacherId).map((exam) => exam.id))
-  const submission = (mockDb.teacherSubmissions ?? []).find(
+const getTeacherAttemptContext = (teacherId, submissionId) => {
+  const exams = getTeacherOwnedExams(teacherId)
+  const examIds = new Set(exams.map((exam) => exam.id))
+  const attempt = mockDb.examAttempts.find(
     (item) => item.id === submissionId && examIds.has(item.examId),
   )
 
-  if (!submission) {
+  if (!attempt) {
     throw new ApiError('Submission was not found.', {
       code: 'TEACHER_SUBMISSION_NOT_FOUND',
       status: 404,
     })
   }
 
-  return submission
+  const exam = exams.find((item) => item.id === attempt.examId)
+
+  return { attempt, exam, exams }
 }
 
 const enrichExam = (exam) => {
-  const submissions = (mockDb.teacherSubmissions ?? []).filter(
-    (submission) => submission.examId === exam.id,
+  const submissions = getExamAttempts(exam.id).map((attempt) =>
+    attemptToTeacherSubmission(attempt, exam),
   )
 
   return {
@@ -437,9 +131,9 @@ const enrichExam = (exam) => {
 }
 
 const buildDashboard = (teacherId, params = {}) => {
-  const exams = getTeacherExams(teacherId).map(enrichExam)
-  const submissions = (mockDb.teacherSubmissions ?? []).filter((submission) =>
-    exams.some((exam) => exam.id === submission.examId),
+  const exams = getTeacherOwnedExams(teacherId).map(enrichExam)
+  const submissions = exams.flatMap((exam) =>
+    getExamAttempts(exam.id).map((attempt) => attemptToTeacherSubmission(attempt, exam)),
   )
   const query = String(params.search ?? '').trim().toLowerCase()
   const status = params.status ?? TEACHER_EXAM_FILTERS.all
@@ -447,7 +141,7 @@ const buildDashboard = (teacherId, params = {}) => {
     const matchesStatus = status === TEACHER_EXAM_FILTERS.all || exam.status === status
     const matchesQuery =
       !query ||
-      [exam.title, exam.description, exam.instructions].some((value) =>
+      [exam.id, exam.title, exam.description, exam.instructions].some((value) =>
         String(value ?? '').toLowerCase().includes(query),
       )
 
@@ -465,8 +159,16 @@ const buildDashboard = (teacherId, params = {}) => {
           submission.status,
         ),
       )
+      .sort(
+        (a, b) =>
+          new Date(b.gradedAt ?? b.submittedAt ?? 0).getTime() -
+          new Date(a.gradedAt ?? a.submittedAt ?? 0).getTime(),
+      )
       .slice(0, 5),
     stats: {
+      activeSubmissions: submissions.filter(
+        (submission) => submission.status === TEACHER_SUBMISSION_STATUSES.inProgress,
+      ).length,
       archivedExams: exams.filter((exam) => exam.status === TEACHER_EXAM_STATUSES.archived)
         .length,
       draftExams: exams.filter((exam) => exam.status === TEACHER_EXAM_STATUSES.draft)
@@ -486,9 +188,9 @@ const buildDashboard = (teacherId, params = {}) => {
   }
 }
 
-const paginate = (items, page = 1, pageSize = 20) => {
+const paginate = (items, page = 1, pageSize = appConfig.exams.defaultPageSize) => {
   const safePage = Math.max(1, Number(page) || 1)
-  const safePageSize = Math.max(1, Number(pageSize) || 20)
+  const safePageSize = Math.max(1, Number(pageSize) || appConfig.exams.defaultPageSize)
   const start = (safePage - 1) * safePageSize
 
   return {
@@ -499,29 +201,45 @@ const paginate = (items, page = 1, pageSize = 20) => {
   }
 }
 
-const normalizeExamPayload = (payload, teacherId) => {
+const normalizeExamPayload = (payload, teacherId, existingExam = null) => {
   const now = new Date().toISOString()
+  const availability = {
+    dueAt:
+      fromLocalDateTimeInput(payload.availability?.dueAt) ||
+      payload.availability?.dueAt ||
+      existingExam?.availability?.dueAt ||
+      '',
+    opensAt:
+      fromLocalDateTimeInput(payload.availability?.opensAt) ||
+      payload.availability?.opensAt ||
+      existingExam?.availability?.opensAt ||
+      '',
+  }
   const nextExam = {
     ...createEmptyTeacherExam(teacherId),
+    ...existingExam,
     ...payload,
-    availability: {
-      dueAt: fromLocalDateTimeInput(payload.availability?.dueAt) || payload.availability?.dueAt || '',
-      opensAt:
-        fromLocalDateTimeInput(payload.availability?.opensAt) ||
-        payload.availability?.opensAt ||
-        '',
-    },
-    durationMinutes: Number(payload.durationMinutes || 60),
-    maxAttempts: Number(payload.maxAttempts || 1),
-    passingGrade: Number(payload.passingGrade || 70),
-    questions: (payload.questions ?? []).map((question, index) => ({
+    availability,
+    createdAt: existingExam?.createdAt ?? payload.createdAt ?? now,
+    createdBy:
+      existingExam?.createdBy ??
+      mockDb.users.find((user) => user.id === teacherId)?.name ??
+      'Teacher',
+    durationMinutes: Number(payload.durationMinutes ?? existingExam?.durationMinutes ?? 60),
+    maxAttempts: Number(payload.maxAttempts ?? existingExam?.maxAttempts ?? 1),
+    ownerTeacherId: teacherId,
+    passingGrade: Number(payload.passingGrade ?? existingExam?.passingGrade ?? 70),
+    questions: (payload.questions ?? existingExam?.questions ?? []).map((question, index) => ({
       ...question,
-      id: question.id || createId(`TQ-${index + 1}`),
+      id: question.id || createMockId(`Q-${index + 1}`),
       options: question.options ? normalizeOptions(question) : undefined,
       points: Number(question.points || 0),
       required: Boolean(question.required),
     })),
+    status: payload.status ?? existingExam?.status ?? TEACHER_EXAM_STATUSES.draft,
+    subject: payload.subject ?? existingExam?.subject ?? 'Teacher Managed',
     updatedAt: now,
+    visibilityScope: payload.visibilityScope ?? existingExam?.visibilityScope ?? 'assigned',
   }
 
   if (!nextExam.title.trim()) {
@@ -606,16 +324,19 @@ const createTeacherExamMock = (payload = {}) =>
       ...createEmptyTeacherExam(teacher.id),
       ...payload,
       createdAt: now,
-      id: createId('TEX'),
+      createdBy: teacher.name,
+      id: createMockId('EX'),
       ownerTeacherId: teacher.id,
+      publishedAt: null,
       status: TEACHER_EXAM_STATUSES.draft,
       title: payload.title || 'Untitled Exam',
       updatedAt: now,
+      visibilityScope: 'assigned',
     }
 
-    mockDb.teacherExams.unshift(baseExam)
+    mockDb.exams.unshift(baseExam)
     appendTeacherActivity('exam', `Created ${baseExam.title}.`, baseExam.id)
-    persistMockDb()
+    persistSharedMockDb()
 
     return toEditorExam(enrichExam(baseExam))
   })
@@ -624,56 +345,52 @@ const saveTeacherExamMock = (examId, payload, { autosave = false } = {}) =>
   mockRequest(() => {
     const teacher = getTeacher()
     const existingExam = findTeacherExam(teacher.id, examId)
-    const mergedExam = {
-      ...existingExam,
-      ...payload,
-      availability: {
-        ...existingExam.availability,
-        ...payload.availability,
-      },
-      id: existingExam.id,
-      ownerTeacherId: teacher.id,
-      status: payload.status ?? existingExam.status,
-    }
     const normalizedExam = autosave
       ? {
-          ...mergedExam,
+          ...existingExam,
+          ...payload,
           availability: {
             dueAt:
-              fromLocalDateTimeInput(mergedExam.availability?.dueAt) ||
-              mergedExam.availability?.dueAt ||
+              fromLocalDateTimeInput(payload.availability?.dueAt) ||
+              payload.availability?.dueAt ||
+              existingExam.availability?.dueAt ||
               '',
             opensAt:
-              fromLocalDateTimeInput(mergedExam.availability?.opensAt) ||
-              mergedExam.availability?.opensAt ||
+              fromLocalDateTimeInput(payload.availability?.opensAt) ||
+              payload.availability?.opensAt ||
+              existingExam.availability?.opensAt ||
               '',
           },
-          durationMinutes: Number(mergedExam.durationMinutes || 60),
-          maxAttempts: Number(mergedExam.maxAttempts || 1),
-          passingGrade: Number(mergedExam.passingGrade || 70),
-          questions: (mergedExam.questions ?? []).map((question, index) => ({
+          durationMinutes: Number(payload.durationMinutes ?? existingExam.durationMinutes ?? 60),
+          maxAttempts: Number(payload.maxAttempts ?? existingExam.maxAttempts ?? 1),
+          questions: (payload.questions ?? existingExam.questions ?? []).map((question, index) => ({
             ...question,
-            id: question.id || createId(`TQ-${index + 1}`),
+            id: question.id || createMockId(`Q-${index + 1}`),
             options: question.options ? normalizeOptions(question) : undefined,
             points: Number(question.points || 0),
             required: Boolean(question.required),
           })),
           updatedAt: new Date().toISOString(),
         }
-      : normalizeExamPayload(mergedExam, teacher.id)
+      : normalizeExamPayload(payload, teacher.id, existingExam)
 
     Object.assign(existingExam, normalizedExam, {
       autosavedAt: autosave ? new Date().toISOString() : existingExam.autosavedAt,
       createdAt: existingExam.createdAt,
       id: existingExam.id,
+      ownerTeacherId: teacher.id,
     })
+
+    if (existingExam.status === TEACHER_EXAM_STATUSES.published) {
+      syncPublishedExamAssignments(existingExam)
+    }
 
     appendTeacherActivity(
       'exam',
       autosave ? `Autosaved ${existingExam.title}.` : `Saved ${existingExam.title}.`,
       existingExam.id,
     )
-    persistMockDb()
+    persistSharedMockDb()
 
     return toEditorExam(enrichExam(existingExam))
   })
@@ -690,12 +407,14 @@ const deleteTeacherExamMock = (examId) =>
       })
     }
 
-    mockDb.teacherExams = mockDb.teacherExams.filter((exam) => exam.id !== examId)
-    mockDb.teacherSubmissions = (mockDb.teacherSubmissions ?? []).filter(
-      (submission) => submission.examId !== examId,
+    mockDb.exams = mockDb.exams.filter((exam) => exam.id !== examId)
+    mockDb.examAssignments = mockDb.examAssignments.filter(
+      (assignment) => assignment.examId !== examId,
     )
+    mockDb.examAttempts = mockDb.examAttempts.filter((attempt) => attempt.examId !== examId)
+    mockDb.studentScores = mockDb.studentScores.filter((score) => score.examId !== examId)
     appendTeacherActivity('exam', `Deleted ${existingExam.title}.`, examId)
-    persistMockDb()
+    persistSharedMockDb()
 
     return { success: true }
   })
@@ -706,23 +425,23 @@ const duplicateTeacherExamMock = (examId) =>
     const existingExam = findTeacherExam(teacher.id, examId)
     const now = new Date().toISOString()
     const duplicate = {
-      ...clone(existingExam),
+      ...cloneEntity(existingExam),
       archivedAt: null,
       createdAt: now,
-      id: createId('TEX'),
+      id: createMockId('EX'),
       publishedAt: null,
       questions: existingExam.questions.map((question, index) => ({
-        ...clone(question),
-        id: createId(`TQ-${index + 1}`),
+        ...cloneEntity(question),
+        id: createMockId(`Q-${index + 1}`),
       })),
       status: TEACHER_EXAM_STATUSES.draft,
       title: `${existingExam.title} Copy`,
       updatedAt: now,
     }
 
-    mockDb.teacherExams.unshift(duplicate)
+    mockDb.exams.unshift(duplicate)
     appendTeacherActivity('exam', `Duplicated ${existingExam.title}.`, duplicate.id)
-    persistMockDb()
+    persistSharedMockDb()
 
     return toEditorExam(enrichExam(duplicate))
   })
@@ -743,21 +462,30 @@ const updateTeacherExamStatusMock = (examId, status) =>
 
       existingExam.publishedAt = existingExam.publishedAt ?? now
       existingExam.archivedAt = null
+      existingExam.status = EXAM_LIFECYCLE_STATUSES.published
+      syncPublishedExamAssignments(existingExam)
+      appendNotificationsForRole({
+        message: `${existingExam.title} is now available.`,
+        role: USER_ROLES.student,
+        targetId: existingExam.id,
+        type: 'exam-published',
+      })
     }
 
     if (status === TEACHER_EXAM_STATUSES.draft) {
       existingExam.publishedAt = null
       existingExam.archivedAt = null
+      existingExam.status = EXAM_LIFECYCLE_STATUSES.draft
     }
 
     if (status === TEACHER_EXAM_STATUSES.archived) {
       existingExam.archivedAt = now
+      existingExam.status = EXAM_LIFECYCLE_STATUSES.archived
     }
 
-    existingExam.status = status
     existingExam.updatedAt = now
     appendTeacherActivity('publish', `${status} ${existingExam.title}.`, existingExam.id)
-    persistMockDb()
+    persistSharedMockDb()
 
     return toEditorExam(enrichExam(existingExam))
   })
@@ -765,36 +493,27 @@ const updateTeacherExamStatusMock = (examId, status) =>
 const listTeacherSubmissionsMock = (params = {}) =>
   mockRequest(() => {
     const teacher = getTeacher()
-    const exams = getTeacherExams(teacher.id)
-    const examIds = new Set(exams.map((exam) => exam.id))
+    const exams = getTeacherOwnedExams(teacher.id)
+    const examById = new Map(exams.map((exam) => [exam.id, exam]))
     const query = String(params.search ?? '').trim().toLowerCase()
     const status = params.status ?? 'all'
     const examId = params.examId ?? 'all'
-    const submissions = (mockDb.teacherSubmissions ?? [])
-      .filter((submission) => examIds.has(submission.examId))
-      .filter((submission) => examId === 'all' || submission.examId === examId)
+    const submissions = mockDb.examAttempts
+      .filter((attempt) => examById.has(attempt.examId))
+      .filter((attempt) => examId === 'all' || attempt.examId === examId)
+      .map((attempt) => attemptToTeacherSubmission(attempt, examById.get(attempt.examId)))
       .filter((submission) => status === 'all' || submission.status === status)
-      .filter((submission) => {
-        const exam = exams.find((item) => item.id === submission.examId)
-        return (
-          !query ||
-          [submission.studentName, submission.id, exam?.title].some((value) =>
-            String(value ?? '').toLowerCase().includes(query),
-          )
-        )
-      })
-      .map((submission) => {
-        const exam = exams.find((item) => item.id === submission.examId)
-
-        return {
-          ...submission,
-          examTitle: exam?.title ?? submission.examId,
-          maxScore: getSubmissionMaxScore(submission),
-          percentage: getSubmissionPercentage(submission),
-          score: getSubmissionScore(submission),
-        }
-      })
-      .sort((a, b) => new Date(b.submittedAt).getTime() - new Date(a.submittedAt).getTime())
+      .filter((submission) =>
+        !query ||
+        [submission.studentName, submission.id, submission.examTitle].some((value) =>
+          String(value ?? '').toLowerCase().includes(query),
+        ),
+      )
+      .sort(
+        (a, b) =>
+          new Date(b.submittedAt ?? b.startedAt).getTime() -
+          new Date(a.submittedAt ?? a.startedAt).getTime(),
+      )
 
     return paginate(submissions, params.page, params.pageSize)
   })
@@ -802,70 +521,108 @@ const listTeacherSubmissionsMock = (params = {}) =>
 const getTeacherSubmissionMock = (submissionId) =>
   mockRequest(() => {
     const teacher = getTeacher()
-    const submission = findTeacherSubmission(teacher.id, submissionId)
-    const exam = findTeacherExam(teacher.id, submission.examId)
-    const submissions = (mockDb.teacherSubmissions ?? []).filter(
-      (item) => item.examId === submission.examId,
-    )
+    const { attempt, exam, exams } = getTeacherAttemptContext(teacher.id, submissionId)
+    const submissions = mockDb.examAttempts
+      .filter((item) => exams.some((teacherExam) => teacherExam.id === item.examId))
+      .sort(
+        (a, b) =>
+          new Date(b.submittedAt ?? b.startedAt).getTime() -
+          new Date(a.submittedAt ?? a.startedAt).getTime(),
+      )
+    const currentIndex = submissions.findIndex((item) => item.id === attempt.id)
 
     return {
       exam,
-      nextSubmissionId:
-        submissions[submissions.findIndex((item) => item.id === submission.id) + 1]?.id ??
-        null,
-      previousSubmissionId:
-        submissions[submissions.findIndex((item) => item.id === submission.id) - 1]?.id ??
-        null,
-      submission: {
-        ...submission,
-        maxScore: getSubmissionMaxScore(submission),
-        percentage: getSubmissionPercentage(submission),
-        score: getSubmissionScore(submission),
-      },
+      nextSubmissionId: submissions[currentIndex + 1]?.id ?? null,
+      previousSubmissionId: submissions[currentIndex - 1]?.id ?? null,
+      submission: attemptToTeacherSubmission(attempt, exam),
     }
   })
+
+const assertSubmissionCanBeGraded = (attempt) => {
+  if (attempt.status === ATTEMPT_STATUSES.inProgress) {
+    throw new ApiError('Active attempts cannot be graded until the student submits.', {
+      code: 'ATTEMPT_IN_PROGRESS',
+      status: 409,
+    })
+  }
+}
 
 const saveTeacherSubmissionGradesMock = (submissionId, payload = {}) =>
   mockRequest(() => {
     const teacher = getTeacher()
-    const submission = findTeacherSubmission(teacher.id, submissionId)
+    const { attempt, exam } = getTeacherAttemptContext(teacher.id, submissionId)
+    assertSubmissionCanBeGraded(attempt)
 
-    submission.questionGrades = payload.questionGrades ?? submission.questionGrades
-    submission.overallFeedback = payload.overallFeedback ?? submission.overallFeedback
-    submission.gradingDraftSavedAt = new Date().toISOString()
-    submission.status = TEACHER_SUBMISSION_STATUSES.grading
-    appendTeacherActivity('grading', `Saved grading draft for ${submission.studentName}.`, submission.id)
-    persistMockDb()
+    attempt.scoreBreakdown = payload.questionGrades ?? attempt.scoreBreakdown
+    attempt.teacherFeedback = payload.overallFeedback ?? attempt.teacherFeedback
+    attempt.gradingDraftSavedAt = new Date().toISOString()
+    appendTeacherActivity('grading', `Saved grading draft for ${getStudentName(attempt.studentId)}.`, attempt.id)
+    persistSharedMockDb()
 
-    return submission
+    return attemptToTeacherSubmission(attempt, exam)
   })
 
 const updateTeacherSubmissionStatusMock = (submissionId, status, payload = {}) =>
   mockRequest(() => {
     const teacher = getTeacher()
-    const submission = findTeacherSubmission(teacher.id, submissionId)
+    const { attempt, exam } = getTeacherAttemptContext(teacher.id, submissionId)
+    const student = mockDb.users.find((user) => user.id === attempt.studentId)
+    const questionGrades =
+      payload.questionGrades ?? attempt.scoreBreakdown ?? attemptToTeacherSubmission(attempt, exam).questionGrades
+    const overallFeedback =
+      payload.overallFeedback !== undefined ? payload.overallFeedback : attempt.teacherFeedback
+    assertSubmissionCanBeGraded(attempt)
 
-    if (payload.questionGrades) {
-      submission.questionGrades = payload.questionGrades
+    if (status === TEACHER_SUBMISSION_STATUSES.graded) {
+      applyTeacherGradesToAttempt(attempt, {
+        overallFeedback,
+        questionGrades,
+        resultsVisible: false,
+        status: ATTEMPT_STATUSES.graded,
+      })
+      appendTeacherActivity(
+        'grading',
+        `Marked grading complete for ${getStudentName(attempt.studentId)}.`,
+        attempt.id,
+      )
     }
 
-    if (payload.overallFeedback !== undefined) {
-      submission.overallFeedback = payload.overallFeedback
+    if (status === TEACHER_SUBMISSION_STATUSES.published) {
+      applyTeacherGradesToAttempt(attempt, {
+        overallFeedback,
+        questionGrades,
+        resultsVisible: true,
+        status: ATTEMPT_STATUSES.graded,
+      })
+      appendAttemptActivity(attempt, 'results-published', 'Teacher published grades.')
+      appendNotification({
+        message: `Grades published for ${exam.title}.`,
+        targetId: attempt.id,
+        type: 'grades-published',
+        userId: attempt.studentId,
+      })
+      appendTeacherActivity(
+        'grading',
+        `Published grades for ${getStudentName(attempt.studentId)}.`,
+        attempt.id,
+      )
     }
 
-    submission.status = status
-    submission.resultsVisible = status === TEACHER_SUBMISSION_STATUSES.published
-    submission.gradedAt = new Date().toISOString()
-    appendTeacherActivity(
-      'grading',
-      status === TEACHER_SUBMISSION_STATUSES.published
-        ? `Published grades for ${submission.studentName}.`
-        : `Marked grading complete for ${submission.studentName}.`,
-      submission.id,
-    )
-    persistMockDb()
+    if (status === TEACHER_SUBMISSION_STATUSES.submitted) {
+      attempt.resultsVisible = false
+      attempt.teacherFeedback = overallFeedback
+      attempt.scoreBreakdown = questionGrades
+      appendTeacherActivity('grading', `Hid results for ${getStudentName(attempt.studentId)}.`, attempt.id)
+    }
 
-    return submission
+    if (student) {
+      updateStudentScoreRecord(attempt, exam, student)
+    }
+
+    persistSharedMockDb()
+
+    return attemptToTeacherSubmission(attempt, exam)
   })
 
 export const listTeacherDashboard = async (params = {}) =>
@@ -873,7 +630,7 @@ export const listTeacherDashboard = async (params = {}) =>
     ? listTeacherDashboardMock(params)
     : apiClient.get(`/teacher/dashboard${toQueryString(params)}`, {
         cacheKey: `teacher:dashboard:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const listTeacherExams = async (params = {}) =>
@@ -881,7 +638,7 @@ export const listTeacherExams = async (params = {}) =>
     ? listTeacherExamsMock(params)
     : apiClient.get(`/teacher/exams${toQueryString(params)}`, {
         cacheKey: `teacher:exams:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const getTeacherExam = async (examId) =>
@@ -932,7 +689,7 @@ export const listTeacherSubmissions = async (params = {}) =>
     ? listTeacherSubmissionsMock(params)
     : apiClient.get(`/teacher/submissions${toQueryString(params)}`, {
         cacheKey: `teacher:submissions:${toQueryString(params)}`,
-        cacheTtlMs: 8000,
+        cacheTtlMs: appConfig.api.teacherCacheTtlMs,
       })
 
 export const getTeacherSubmission = async (submissionId) =>
@@ -967,9 +724,10 @@ export const hideTeacherSubmissionGrades = async (submissionId, payload) =>
   apiClient.isMock
     ? updateTeacherSubmissionStatusMock(
         submissionId,
-        TEACHER_SUBMISSION_STATUSES.graded,
+        TEACHER_SUBMISSION_STATUSES.submitted,
         payload,
       )
     : apiClient.post(`/teacher/submissions/${encodeURIComponent(submissionId)}/hide`, payload)
 
 export const createTeacherQuestion = createEmptyTeacherQuestion
+export { QUESTION_TYPES, calculateMaxScore }

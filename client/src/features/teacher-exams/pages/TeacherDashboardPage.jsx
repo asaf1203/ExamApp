@@ -149,6 +149,7 @@ export function TeacherDashboardPage() {
           <StatCard label="Published" value={stats.publishedExams} />
           <StatCard label="Drafts" value={stats.draftExams} />
           <StatCard detail="Needs review" label="Pending Grading" value={stats.pendingGrading} />
+          <StatCard label="Active Attempts" value={stats.activeSubmissions ?? 0} />
           <StatCard label="Submissions" value={stats.totalSubmissions} />
           <StatCard label="Archived" value={stats.archivedExams} />
         </div>

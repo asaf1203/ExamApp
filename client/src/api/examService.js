@@ -7,6 +7,17 @@
  */
 import { ApiError, apiClient, mockRequest } from './apiClient'
 import { USER_ROLES, requireMockRole } from './authService'
+import {
+  appendAttemptActivity,
+  appendNotification,
+  appendTeacherActivity,
+  buildQuestionGrades,
+  getExamOwnerId,
+  isExamPublishedForStudents,
+  persistSharedMockDb,
+  syncAllPublishedExamAssignments,
+  updateStudentScoreRecord,
+} from './mockExamRepository'
 import { mockDb, persistMockDb } from './mockDb'
 import { appConfig } from '../config'
 import {
@@ -15,7 +26,6 @@ import {
   EXAM_STATUSES,
   calculateMaxScore,
   getMissingQuestionIds,
-  gradeQuestionAnswer,
 } from '../models/examModels'
 import { isFuture, isPast, minIsoDate } from '../utils/dateTime'
 
@@ -56,15 +66,21 @@ const findExam = (examId) => {
 }
 
 const getStudentAssignments = (studentId) =>
-  mockDb.examAssignments.filter((assignment) => assignment.studentId === studentId)
+  mockDb.examAssignments.filter((assignment) => {
+    const exam = mockDb.exams.find((item) => item.id === assignment.examId)
+
+    return assignment.studentId === studentId && isExamPublishedForStudents(exam)
+  })
 
 const findAssignment = (studentId, examId) => {
+  syncAllPublishedExamAssignments()
   const normalizedExamId = normalizeId(examId)
   const assignment = mockDb.examAssignments.find(
     (item) => item.studentId === studentId && item.examId === normalizedExamId,
   )
+  const exam = mockDb.exams.find((item) => item.id === normalizedExamId)
 
-  if (!assignment) {
+  if (!assignment || !isExamPublishedForStudents(exam)) {
     throw new ApiError('This exam is not assigned to the current student.', {
       code: 'ASSIGNMENT_NOT_FOUND',
       status: 404,
@@ -99,13 +115,7 @@ const findAttempt = (studentId, attemptId) => {
 }
 
 const appendActivity = (attempt, type, message) => {
-  attempt.activityLog = attempt.activityLog ?? []
-  attempt.activityLog.push({
-    id: createId('ACT'),
-    createdAt: new Date().toISOString(),
-    message,
-    type,
-  })
+  appendAttemptActivity(attempt, type, message)
 }
 
 const sanitizeQuestionForTaking = (question) => {
@@ -127,56 +137,40 @@ const copyAttemptForClient = (attempt) => ({
   ...attempt,
   activityLog: attempt.activityLog ?? [],
   answers: attempt.answers ?? {},
+  status:
+    !attempt.resultsVisible && attempt.status === ATTEMPT_STATUSES.graded
+      ? ATTEMPT_STATUSES.submitted
+      : attempt.status,
+  score:
+    attempt.resultsVisible || attempt.status === ATTEMPT_STATUSES.inProgress
+      ? attempt.score
+      : null,
+  scoreBreakdown:
+    attempt.resultsVisible || attempt.status === ATTEMPT_STATUSES.inProgress
+      ? attempt.scoreBreakdown ?? []
+      : [],
+  teacherFeedback:
+    attempt.resultsVisible || attempt.status === ATTEMPT_STATUSES.inProgress
+      ? attempt.teacherFeedback ?? ''
+      : 'Submitted. Grades and feedback will appear after the teacher publishes results.',
 })
-
-const updateScoreRecord = (attempt, exam, student) => {
-  const existingScore = mockDb.studentScores.find((score) => score.id === attempt.id)
-  const scoreRecord = {
-    id: attempt.id,
-    answers: Object.entries(attempt.answers ?? {}).map(([questionId, answer]) => ({
-      answer,
-      isCorrect:
-        attempt.scoreBreakdown?.find((item) => item.questionId === questionId)
-          ?.isCorrect ?? false,
-      questionId,
-    })),
-    examId: exam.id,
-    maxScore: attempt.maxScore,
-    score: attempt.score,
-    studentId: student.id,
-    studentName: student.name,
-    submittedAt: attempt.submittedAt,
-  }
-
-  if (existingScore) {
-    Object.assign(existingScore, scoreRecord)
-  } else {
-    mockDb.studentScores.push(scoreRecord)
-  }
-}
 
 const gradeAttempt = ({ attempt, exam, student, submittedBy = 'student' }) => {
   const now = new Date().toISOString()
-  const scoreBreakdown = exam.questions.map((question) => ({
-    answer: attempt.answers?.[question.id] ?? '',
-    questionId: question.id,
-    ...gradeQuestionAnswer(question, attempt.answers?.[question.id]),
-  }))
+  const scoreBreakdown = buildQuestionGrades(exam, attempt.answers)
   const score = scoreBreakdown.reduce((total, item) => total + item.score, 0)
   const maxScore = calculateMaxScore(exam.questions)
 
   Object.assign(attempt, {
     autosavedAt: now,
     maxScore,
+    resultsVisible: false,
     score,
     scoreBreakdown,
-    status: ATTEMPT_STATUSES.graded,
+    status: ATTEMPT_STATUSES.submitted,
     submittedAt: now,
     submittedBy,
-    teacherFeedback:
-      score / Math.max(maxScore, 1) >= 0.8
-        ? 'Strong work. Review the per-question feedback for small improvements.'
-        : 'Review the concepts marked in the feedback before your next attempt.',
+    teacherFeedback: '',
   })
 
   appendActivity(
@@ -186,7 +180,18 @@ const gradeAttempt = ({ attempt, exam, student, submittedBy = 'student' }) => {
       ? 'Exam auto-submitted because the timer expired.'
       : 'Exam submitted by student.',
   )
-  updateScoreRecord(attempt, exam, student)
+  appendTeacherActivity(
+    'submission',
+    `${student.name} submitted ${exam.title}.`,
+    attempt.id,
+  )
+  appendNotification({
+    message: `${student.name} submitted ${exam.title}.`,
+    targetId: attempt.id,
+    type: 'submission-received',
+    userId: getExamOwnerId(exam),
+  })
+  updateStudentScoreRecord(attempt, exam, student)
 
   return attempt
 }
@@ -214,7 +219,7 @@ const syncExpiredAttempts = () => {
   })
 
   if (changed) {
-    persistMockDb()
+    persistSharedMockDb()
   }
 }
 
@@ -238,9 +243,14 @@ const buildExamCard = (assignment) => {
 
   if (activeAttempt) {
     status = EXAM_STATUSES.inProgress
-  } else if (latestSubmittedAttempt?.status === ATTEMPT_STATUSES.graded) {
+  } else if (
+    latestSubmittedAttempt?.status === ATTEMPT_STATUSES.graded &&
+    latestSubmittedAttempt.resultsVisible
+  ) {
     status = EXAM_STATUSES.graded
   } else if (latestSubmittedAttempt?.status === ATTEMPT_STATUSES.submitted) {
+    status = EXAM_STATUSES.submitted
+  } else if (latestSubmittedAttempt?.status === ATTEMPT_STATUSES.graded) {
     status = EXAM_STATUSES.submitted
   } else if (assignmentExpired) {
     status = EXAM_STATUSES.expired
@@ -262,7 +272,7 @@ const buildExamCard = (assignment) => {
     questionCount: exam.questions.length,
     remainingAttempts,
     score:
-      latestSubmittedAttempt?.score != null
+      latestSubmittedAttempt?.resultsVisible && latestSubmittedAttempt?.score != null
         ? {
             maxScore: latestSubmittedAttempt.maxScore,
             score: latestSubmittedAttempt.score,
@@ -364,6 +374,7 @@ const paginate = (items, page = 1, pageSize = appConfig.exams.defaultPageSize) =
 const listStudentExamsMock = (params = {}) =>
   mockRequest(() => {
     const student = requireMockRole(USER_ROLES.student)
+    syncAllPublishedExamAssignments()
     syncExpiredAttempts()
 
     const cards = getStudentAssignments(student.id)
@@ -408,7 +419,7 @@ const startOrResumeExamMock = (examId) =>
 
     if (activeAttempt) {
       appendActivity(activeAttempt, 'resumed', 'Exam resumed.')
-      persistMockDb()
+      persistSharedMockDb()
 
       return {
         assignment,
@@ -452,6 +463,7 @@ const startOrResumeExamMock = (examId) =>
       examId: exam.id,
       expiresAt: minIsoDate(durationExpiresAt, assignment.dueAt),
       maxScore: calculateMaxScore(exam.questions),
+      resultsVisible: false,
       score: null,
       scoreBreakdown: [],
       startedAt: now.toISOString(),
@@ -464,7 +476,12 @@ const startOrResumeExamMock = (examId) =>
 
     appendActivity(attempt, 'started', 'Exam started.')
     mockDb.examAttempts.push(attempt)
-    persistMockDb()
+    appendTeacherActivity(
+      'submission',
+      `${student.name} started ${exam.title}.`,
+      attempt.id,
+    )
+    persistSharedMockDb()
 
     return {
       assignment,
@@ -507,7 +524,7 @@ const saveAttemptDraftMock = (attemptId, answers) =>
     attempt.answers = answers ?? {}
     attempt.autosavedAt = new Date().toISOString()
     appendActivity(attempt, 'autosaved', 'Draft saved.')
-    persistMockDb()
+    persistSharedMockDb()
 
     return copyAttemptForClient(attempt)
   })
@@ -540,11 +557,11 @@ const submitAttemptMock = (attemptId, { allowIncomplete = false, answers = {}, s
 
     attempt.answers = nextAnswers
     gradeAttempt({ attempt, exam, student, submittedBy })
-    persistMockDb()
+    persistSharedMockDb()
 
     return {
       attempt: copyAttemptForClient(attempt),
-      exam,
+      exam: attempt.resultsVisible ? exam : sanitizeExamForTaking(exam),
     }
   })
 
@@ -597,7 +614,7 @@ const recordAttemptActivityMock = (attemptId, { message, type }) =>
     const attempt = findAttempt(student.id, attemptId)
 
     appendActivity(attempt, type, message)
-    persistMockDb()
+    persistSharedMockDb()
 
     return copyAttemptForClient(attempt)
   })
@@ -605,14 +622,17 @@ const recordAttemptActivityMock = (attemptId, { message, type }) =>
 export const getAllExams = async () =>
   apiClient.isMock
     ? mockRequest(() => mockDb.exams)
-    : apiClient.get('/exams', { cacheKey: 'exams:list', cacheTtlMs: 30000 })
+    : apiClient.get('/exams', {
+        cacheKey: 'exams:list',
+        cacheTtlMs: appConfig.api.cacheTtlMs,
+      })
 
 export const getExamById = async (id) =>
   apiClient.isMock
     ? mockRequest(() => findExam(id))
     : apiClient.get(`/exams/${normalizeId(id)}`, {
         cacheKey: `exams:${normalizeId(id)}`,
-        cacheTtlMs: 30000,
+        cacheTtlMs: appConfig.api.cacheTtlMs,
       })
 
 /** Typo alias kept for backward compatibility with any existing imports */
@@ -654,7 +674,7 @@ export const listStudentExams = async (params = {}) =>
     ? listStudentExamsMock(params)
     : apiClient.get(`/student/exams${toQueryString(params)}`, {
         cacheKey: `student:exams:${toQueryString(params)}`,
-        cacheTtlMs: 10000,
+        cacheTtlMs: appConfig.api.studentCacheTtlMs,
       })
 
 export const getStudentExamDetails = async (examId) =>

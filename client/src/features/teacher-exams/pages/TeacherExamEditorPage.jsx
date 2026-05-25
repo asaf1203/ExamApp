@@ -12,6 +12,7 @@ import {
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { LoadingState } from '../../../components/LoadingState'
 import { useAuth } from '../../../auth/authState'
+import { appConfig } from '../../../config'
 import { useBeforeUnload } from '../../../hooks/useBeforeUnload'
 import { QUESTION_TYPES } from '../../../models/examModels'
 import {
@@ -38,15 +39,13 @@ const builderTabs = [
   { label: 'Publish', value: 'publish' },
 ]
 
-const newDraftStorageKey = 'examPlatform.teacher.newExamDraft'
-
 const getInitialExam = (teacherId, isCreate) => {
   if (!isCreate) {
     return createEmptyTeacherExam(teacherId)
   }
 
   try {
-    const savedDraft = window.localStorage?.getItem?.(newDraftStorageKey)
+    const savedDraft = window.localStorage?.getItem?.(appConfig.exams.teacherDraftStorageKey)
 
     return savedDraft ? JSON.parse(savedDraft) : createEmptyTeacherExam(teacherId)
   } catch {
@@ -221,7 +220,10 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
     const timeoutId = window.setTimeout(async () => {
       try {
         if (isCreate) {
-          window.localStorage?.setItem?.(newDraftStorageKey, JSON.stringify(examRef.current))
+          window.localStorage?.setItem?.(
+            appConfig.exams.teacherDraftStorageKey,
+            JSON.stringify(examRef.current),
+          )
         } else if (currentExamId) {
           await autosaveTeacherExam(currentExamId, examRef.current)
         }
@@ -230,7 +232,7 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
       } catch {
         setSaveState('error')
       }
-    }, 1000)
+    }, appConfig.exams.teacherAutoSaveDebounceMs)
 
     return () => {
       window.clearTimeout(timeoutId)
@@ -322,7 +324,7 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
       setExam(savedExam)
       setDirty(false)
       setSaveState('saved')
-      window.localStorage?.removeItem?.(newDraftStorageKey)
+      window.localStorage?.removeItem?.(appConfig.exams.teacherDraftStorageKey)
       notify({ message: 'Exam saved.', tone: 'success' })
 
       if (isCreate) {

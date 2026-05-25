@@ -11,6 +11,7 @@ import { TeacherSubmissionStatusBadge } from '../components/TeacherStatusBadge'
 
 const submissionStatusOptions = [
   { label: 'All', value: 'all' },
+  { label: 'In Progress', value: TEACHER_SUBMISSION_STATUSES.inProgress },
   { label: 'Submitted', value: TEACHER_SUBMISSION_STATUSES.submitted },
   { label: 'In Review', value: TEACHER_SUBMISSION_STATUSES.grading },
   { label: 'Graded', value: TEACHER_SUBMISSION_STATUSES.graded },
