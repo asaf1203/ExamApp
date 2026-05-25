@@ -1,25 +1,28 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useEffect, useMemo, useState } from 'react'
-import { appConfig } from '../config'
+import { appConfig, isFeatureEnabled } from '../config'
 
-const THEME_STORAGE_KEY = 'examPlatform.theme'
 const ThemeContext = createContext(null)
 
 const getInitialTheme = () => {
-  if (typeof window === 'undefined' || !appConfig.features.darkMode) {
+  if (typeof window === 'undefined' || !isFeatureEnabled('darkMode')) {
     return 'light'
   }
 
   let saved
 
   try {
-    saved = window.localStorage?.getItem?.(THEME_STORAGE_KEY) ?? null
+    saved = window.localStorage?.getItem?.(appConfig.ui.themeStorageKey) ?? null
   } catch {
     saved = null
   }
 
   if (saved === 'light' || saved === 'dark') {
     return saved
+  }
+
+  if (appConfig.ui.defaultTheme === 'light' || appConfig.ui.defaultTheme === 'dark') {
+    return appConfig.ui.defaultTheme
   }
 
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
@@ -33,7 +36,7 @@ export function ThemeProvider({ children }) {
     document.documentElement.dataset.bsTheme = theme
 
     try {
-      window.localStorage?.setItem?.(THEME_STORAGE_KEY, theme)
+      window.localStorage?.setItem?.(appConfig.ui.themeStorageKey, theme)
     } catch {
       // Theme persistence is optional when storage is unavailable.
     }

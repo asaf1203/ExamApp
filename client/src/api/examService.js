@@ -605,14 +605,17 @@ const recordAttemptActivityMock = (attemptId, { message, type }) =>
 export const getAllExams = async () =>
   apiClient.isMock
     ? mockRequest(() => mockDb.exams)
-    : apiClient.get('/exams', { cacheKey: 'exams:list', cacheTtlMs: 30000 })
+    : apiClient.get('/exams', {
+        cacheKey: 'exams:list',
+        cacheTtlMs: appConfig.api.cacheTtlMs,
+      })
 
 export const getExamById = async (id) =>
   apiClient.isMock
     ? mockRequest(() => findExam(id))
     : apiClient.get(`/exams/${normalizeId(id)}`, {
         cacheKey: `exams:${normalizeId(id)}`,
-        cacheTtlMs: 30000,
+        cacheTtlMs: appConfig.api.cacheTtlMs,
       })
 
 /** Typo alias kept for backward compatibility with any existing imports */
@@ -654,7 +657,7 @@ export const listStudentExams = async (params = {}) =>
     ? listStudentExamsMock(params)
     : apiClient.get(`/student/exams${toQueryString(params)}`, {
         cacheKey: `student:exams:${toQueryString(params)}`,
-        cacheTtlMs: 10000,
+        cacheTtlMs: appConfig.api.studentCacheTtlMs,
       })
 
 export const getStudentExamDetails = async (examId) =>

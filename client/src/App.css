@@ -723,6 +723,18 @@ body[data-theme='dark'] {
   padding: 14px;
 }
 
+.config-debug-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(260px, 0.9fr) minmax(0, 1.1fr);
+}
+
+.feature-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .question-editor-card {
   box-shadow: none;
 }
@@ -890,6 +902,7 @@ body[data-theme='dark'] {
   .auth-panel,
   .instruction-grid,
   .profile-grid,
+  .config-debug-grid,
   .teacher-dashboard-grid,
   .builder-layout,
   .grading-layout,

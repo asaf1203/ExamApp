@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { USER_ROLES, requestPasswordReset } from '../api/authService'
-import { appConfig } from '../config'
+import { appConfig, isFeatureEnabled } from '../config'
 import { useToast } from '../ui/ToastContext'
 import { useAuth } from './authState'
 
@@ -21,8 +21,8 @@ function AuthScreen() {
   const [formErrors, setFormErrors] = useState({})
   const [submitting, setSubmitting] = useState(false)
 
-  const isSignup = appConfig.features.registration && mode === 'signup'
-  const isReset = appConfig.features.passwordReset && mode === 'reset'
+  const isSignup = isFeatureEnabled('registration') && mode === 'signup'
+  const isReset = isFeatureEnabled('passwordReset') && mode === 'reset'
 
   const updateField = (field, value) => {
     clearAuthError()
@@ -98,8 +98,11 @@ function AuthScreen() {
           </p>
           <div className="demo-accounts">
             <strong>Demo accounts</strong>
-            <span>student@example.com / student123</span>
-            <span>teacher@example.com / teacher123</span>
+            {appConfig.mock.demoAccounts.map((account) => (
+              <span key={account.email}>
+                {account.email} / {account.password}
+              </span>
+            ))}
           </div>
         </div>
 
@@ -114,7 +117,7 @@ function AuthScreen() {
             >
               Login
             </button>
-            {appConfig.features.registration && (
+            {isFeatureEnabled('registration') && (
               <button
                 aria-selected={isSignup}
                 className={isSignup ? 'active' : ''}
@@ -221,7 +224,7 @@ function AuthScreen() {
             </button>
           </form>
 
-          {appConfig.features.passwordReset && (
+          {isFeatureEnabled('passwordReset') && (
             <button
               className="link-button mt-3"
               onClick={() => switchMode(isReset ? 'login' : 'reset')}

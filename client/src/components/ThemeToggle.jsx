@@ -1,10 +1,10 @@
-import { appConfig } from '../config'
+import { isFeatureEnabled } from '../config'
 import { useTheme } from '../ui/ThemeContext'
 
 export function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme()
 
-  if (!appConfig.features.darkMode) {
+  if (!isFeatureEnabled('darkMode')) {
     return null
   }
 

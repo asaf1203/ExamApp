@@ -520,14 +520,14 @@ const loadMockDb = () => {
   }
 
   try {
-    const raw = storage.getItem(appConfig.api.mockDbStorageKey)
+    const raw = storage.getItem(appConfig.mock.dbStorageKey)
     const parsed = raw ? JSON.parse(raw) : null
 
     if (parsed?.version === DB_VERSION && parsed?.data?.users && parsed?.data?.exams) {
       return parsed.data
     }
   } catch {
-    storage.removeItem(appConfig.api.mockDbStorageKey)
+    storage.removeItem(appConfig.mock.dbStorageKey)
   }
 
   return createSeedMockDb()
@@ -542,8 +542,12 @@ export const persistMockDb = () => {
     return
   }
 
+  if (!appConfig.mock.persistDb) {
+    return
+  }
+
   storage.setItem(
-    appConfig.api.mockDbStorageKey,
+    appConfig.mock.dbStorageKey,
     JSON.stringify({
       data: mockDb,
       version: DB_VERSION,

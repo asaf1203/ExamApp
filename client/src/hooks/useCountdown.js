@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { appConfig } from '../config'
 
 const getRemainingMs = (expiresAt) => {
   const target = expiresAt ? new Date(expiresAt).getTime() : 0
@@ -33,7 +34,7 @@ export const useCountdown = (expiresAt, onExpire) => {
     }
 
     tick()
-    const intervalId = window.setInterval(tick, 1000)
+    const intervalId = window.setInterval(tick, appConfig.ui.countdownTickMs)
 
     return () => {
       window.clearInterval(intervalId)

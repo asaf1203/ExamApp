@@ -1,139 +1,156 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import TeacherDashboard from '../src/TeacherDashboard'
-import { getAllExams, getStudentScores } from '../src/api/examService'
+import {
+  archiveTeacherExam,
+  deleteTeacherExam,
+  duplicateTeacherExam,
+  listTeacherDashboard,
+  publishTeacherExam,
+  unpublishTeacherExam,
+} from '../src/api/teacherService'
+import { ROUTES, RouterProvider } from '../src/routing/router'
+import { ToastProvider } from '../src/ui/ToastContext'
 
-vi.mock('../src/api/examService', () => ({
-  getAllExams: vi.fn(),
-  getStudentScores: vi.fn(),
+vi.mock('../src/api/teacherService', () => ({
+  archiveTeacherExam: vi.fn(),
+  deleteTeacherExam: vi.fn(),
+  duplicateTeacherExam: vi.fn(),
+  listTeacherDashboard: vi.fn(),
+  publishTeacherExam: vi.fn(),
+  unpublishTeacherExam: vi.fn(),
 }))
 
-const exams = [
-  {
-    id: 'EX-101',
-    title: 'Full Stack Foundations',
-    description: 'Covers HTML, CSS, JavaScript, HTTP, and basic React.',
-    durationMinutes: 60,
-    createdBy: 'Dr. Cohen',
-    questions: [
-      {
-        id: 'Q-101-1',
-        prompt: 'Which HTTP method is typically used to create a resource?',
-        points: 10,
-      },
-      {
-        id: 'Q-101-2',
-        prompt: 'What does JSX compile into?',
-        points: 10,
-      },
-    ],
+const dashboard = {
+  activity: [
+    {
+      id: 'ACT-1',
+      createdAt: '2026-04-21T09:30:00Z',
+      message: 'Published Production Frontend Architecture.',
+      type: 'exam',
+    },
+  ],
+  exams: [
+    {
+      id: 'TEX-101',
+      description: 'Covers REST boundaries and resilient UI flows.',
+      durationMinutes: 75,
+      pendingGrading: 2,
+      questions: [{ id: 'TQ-101-1' }, { id: 'TQ-101-2' }],
+      status: 'published',
+      submissionsCount: 5,
+      title: 'Production Frontend Architecture',
+      updatedAt: '2026-04-24T13:05:00Z',
+    },
+    {
+      id: 'TEX-202',
+      description: 'Draft exam for React state and controlled forms.',
+      durationMinutes: 45,
+      pendingGrading: 0,
+      questions: [{ id: 'TQ-202-1' }],
+      status: 'draft',
+      submissionsCount: 0,
+      title: 'React State Workshop',
+      updatedAt: '2026-04-20T08:15:00Z',
+    },
+  ],
+  recentlyGraded: [
+    {
+      id: 'SUB-1',
+      status: 'published',
+      studentName: 'Maya Rosen',
+      submittedAt: '2026-04-21T09:30:00Z',
+    },
+  ],
+  stats: {
+    archivedExams: 0,
+    draftExams: 1,
+    pendingGrading: 2,
+    publishedExams: 1,
+    totalExams: 2,
+    totalSubmissions: 5,
   },
-  {
-    id: 'EX-202',
-    title: 'React State and Effects',
-    description: 'Assesses component state, props, effects, and rendering.',
-    durationMinutes: 45,
-    createdBy: 'Prof. Levi',
-    questions: [
-      {
-        id: 'Q-202-1',
-        prompt: 'Which hook is commonly used to fetch data after render?',
-        points: 10,
-      },
-    ],
-  },
-]
+}
 
-const scores = [
-  {
-    id: 'SC-9001',
-    studentName: 'Maya Rosen',
-    examId: 'EX-101',
-    score: 29,
-    maxScore: 35,
-    submittedAt: '2026-04-21T09:30:00Z',
-  },
-  {
-    id: 'SC-9002',
-    studentName: 'Daniel Amir',
-    examId: 'EX-101',
-    score: 32,
-    maxScore: 40,
-    submittedAt: '2026-04-24T13:05:00Z',
-  },
-]
+const renderDashboard = () => {
+  window.location.hash = ROUTES.teacherDashboard
+
+  return render(
+    <RouterProvider>
+      <ToastProvider>
+        <TeacherDashboard />
+      </ToastProvider>
+    </RouterProvider>,
+  )
+}
 
 describe('TeacherDashboard', () => {
   beforeEach(() => {
     vi.clearAllMocks()
-    getAllExams.mockResolvedValue(exams)
-    getStudentScores.mockResolvedValue(scores)
+    listTeacherDashboard.mockResolvedValue(dashboard)
+    archiveTeacherExam.mockResolvedValue({})
+    deleteTeacherExam.mockResolvedValue({})
+    duplicateTeacherExam.mockResolvedValue({ id: 'TEX-303' })
+    publishTeacherExam.mockResolvedValue({})
+    unpublishTeacherExam.mockResolvedValue({})
   })
 
-  it('shows a loading status while exams are being fetched', () => {
-    getAllExams.mockReturnValue(new Promise(() => {}))
-    getStudentScores.mockReturnValue(new Promise(() => {}))
+  it('shows a loading status while the teacher dashboard is being fetched', () => {
+    listTeacherDashboard.mockReturnValue(new Promise(() => {}))
 
-    render(<TeacherDashboard />)
+    renderDashboard()
 
-    expect(screen.getByRole('status')).toHaveTextContent('Loading exams...')
-  })
-
-  it('renders fetched exams with counts, metadata, and questions', async () => {
-    render(<TeacherDashboard />)
-
-    expect(await screen.findByText('Full Stack Foundations')).toBeInTheDocument()
-    expect(screen.getByText('React State and Effects')).toBeInTheDocument()
-    expect(screen.getByText('2 exams')).toBeInTheDocument()
-    expect(screen.getByText('60 min')).toBeInTheDocument()
-    expect(screen.getByText('Created by Dr. Cohen')).toBeInTheDocument()
-    expect(screen.getByText('2 questions')).toBeInTheDocument()
-    expect(screen.getByText('2 submissions')).toBeInTheDocument()
-    expect(screen.getByText('0 submissions')).toBeInTheDocument()
     expect(
-      screen.getByText('Which HTTP method is typically used to create a resource?'),
+      screen.getByRole('status', { name: /loading teacher dashboard/i }),
     ).toBeInTheDocument()
-    expect(getAllExams).toHaveBeenCalledTimes(1)
-    expect(getStudentScores).toHaveBeenCalledTimes(1)
   })
 
-  it('expands and hides recent submissions for exams with scores', async () => {
-    render(<TeacherDashboard />)
+  it('renders fetched exams, stats, recent grading, and activity', async () => {
+    renderDashboard()
 
-    const viewButton = await screen.findByRole('button', {
-      name: /view submissions/i,
-    })
-
-    fireEvent.click(viewButton)
-
-    const submissionsTable = screen.getByRole('table')
-    expect(within(submissionsTable).getByText('Maya Rosen')).toBeInTheDocument()
-    expect(within(submissionsTable).getByText('Daniel Amir')).toBeInTheDocument()
-    expect(within(submissionsTable).getByText('29 / 35')).toBeInTheDocument()
-    expect(within(submissionsTable).getByText('83%')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: /hide submissions/i }))
-
-    expect(screen.queryByRole('table')).not.toBeInTheDocument()
+    expect(
+      await screen.findByText('Production Frontend Architecture'),
+    ).toBeInTheDocument()
+    expect(screen.getByText('React State Workshop')).toBeInTheDocument()
+    expect(screen.getByText('Total Exams')).toBeInTheDocument()
+    expect(screen.getAllByText('Published').length).toBeGreaterThan(0)
+    expect(screen.getByText('Pending Grading')).toBeInTheDocument()
+    expect(screen.getByText('1h 15m')).toBeInTheDocument()
+    expect(screen.getByText('2 pending')).toBeInTheDocument()
+    expect(screen.getByText('Maya Rosen')).toBeInTheDocument()
+    expect(
+      screen.getByText('Published Production Frontend Architecture.'),
+    ).toBeInTheDocument()
+    expect(listTeacherDashboard).toHaveBeenCalledWith({ search: '' })
   })
 
-  it('does not render a submissions toggle for exams without scores', async () => {
-    render(<TeacherDashboard />)
+  it('opens a confirmation flow before publishing a draft exam', async () => {
+    renderDashboard()
 
-    expect(await screen.findByText('React State and Effects')).toBeInTheDocument()
-    expect(screen.getAllByRole('button', { name: /view submissions/i })).toHaveLength(
-      1,
+    await screen.findByText('React State Workshop')
+    fireEvent.click(screen.getByRole('button', { name: /^publish$/i }))
+
+    expect(screen.getByRole('dialog')).toHaveTextContent(
+      'This will publish the selected exam.',
     )
+
+    fireEvent.click(screen.getByRole('button', { name: /^confirm$/i }))
+
+    await waitFor(() => {
+      expect(publishTeacherExam).toHaveBeenCalledWith('TEX-202')
+    })
   })
 
   it('shows an error message when the dashboard service fails', async () => {
-    getAllExams.mockRejectedValue(new Error('Unable to load teacher dashboard.'))
+    listTeacherDashboard.mockRejectedValue(new Error('Unable to load teacher dashboard.'))
 
-    render(<TeacherDashboard />)
+    renderDashboard()
 
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Unable to load teacher dashboard.',
     )
-    expect(screen.queryByText('Full Stack Foundations')).not.toBeInTheDocument()
+    expect(
+      screen.queryByText('Production Frontend Architecture'),
+    ).not.toBeInTheDocument()
   })
 })

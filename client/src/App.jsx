@@ -4,7 +4,7 @@ import { USER_ROLES } from './api/authService'
 import { AuthProvider } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import { useAuth } from './auth/authState'
-import { appConfig } from './config'
+import { isFeatureEnabled } from './config'
 import { StudentDashboard } from './features/student-exams/pages/StudentDashboard'
 import { ExamInstructionsPage } from './features/student-exams/pages/ExamInstructionsPage'
 import { ExamTakingPage } from './features/student-exams/pages/ExamTakingPage'
@@ -82,7 +82,7 @@ function RouteSwitch() {
 
   if (
     studentRouteNames.has(route.name) &&
-    !appConfig.features.studentPortal
+    !isFeatureEnabled('studentPortal')
   ) {
     return (
       <div className="alert alert-danger" role="alert">
@@ -93,7 +93,7 @@ function RouteSwitch() {
 
   if (
     teacherRouteNames.has(route.name) &&
-    !appConfig.features.teacherDashboard
+    !isFeatureEnabled('teacherDashboard')
   ) {
     return (
       <div className="alert alert-danger" role="alert">

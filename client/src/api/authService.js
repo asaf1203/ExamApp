@@ -11,7 +11,7 @@ import {
   saveRefreshToken,
 } from './authTokenStorage'
 import { ApiError, apiClient, mockRequest } from './apiClient'
-import { appConfig } from '../config'
+import { appConfig, isFeatureEnabled } from '../config'
 import { mockDb, persistMockDb } from './mockDb'
 
 export const USER_ROLES = {
@@ -144,7 +144,7 @@ const mockLogin = ({ email, password }) =>
 
 const mockSignup = ({ name, email, password, role }) =>
   mockRequest(() => {
-    if (!appConfig.features.registration) {
+    if (!isFeatureEnabled('registration')) {
       throw new ApiError('Registration is currently disabled.', {
         code: 'REGISTRATION_DISABLED',
         status: 403,
