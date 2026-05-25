@@ -1,28 +1,619 @@
 /**
- * Async facade over in-memory mock data. Mimics network latency and returns clones
- * so callers cannot accidentally mutate the shared mockDb singleton.
+ * Exam service/repository facade.
+ *
+ * UI modules should depend on this file rather than mockDb. The exported
+ * functions intentionally map to future REST endpoints so backend migration can
+ * keep the UI contract stable.
  */
-import { apiClient, mockRequest } from './apiClient'
-import { mockDb } from './mockDb'
+import { ApiError, apiClient, mockRequest } from './apiClient'
+import { USER_ROLES, requireMockRole } from './authService'
+import { mockDb, persistMockDb } from './mockDb'
+import { appConfig } from '../config'
+import {
+  ATTEMPT_STATUSES,
+  DASHBOARD_FILTERS,
+  EXAM_STATUSES,
+  calculateMaxScore,
+  getMissingQuestionIds,
+  gradeQuestionAnswer,
+} from '../models/examModels'
+import { isFuture, isPast, minIsoDate } from '../utils/dateTime'
 
 /** Normalizes user-typed exam IDs for case-insensitive matching */
 const normalizeId = (id) => String(id).trim().toUpperCase()
 
+const normalizeAttemptId = (id) => String(id).trim().toUpperCase()
+
+const createId = (prefix) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`.toUpperCase()
+
+const toQueryString = (params = {}) => {
+  const searchParams = new URLSearchParams()
+
+  Object.entries(params).forEach(([key, value]) => {
+    if (value !== undefined && value !== null && value !== '') {
+      searchParams.set(key, value)
+    }
+  })
+
+  const query = searchParams.toString()
+
+  return query ? `?${query}` : ''
+}
+
+const findExam = (examId) => {
+  const normalizedExamId = normalizeId(examId)
+  const exam = mockDb.exams.find((item) => item.id === normalizedExamId)
+
+  if (!exam) {
+    throw new ApiError(`Exam "${examId}" was not found.`, {
+      code: 'EXAM_NOT_FOUND',
+      status: 404,
+    })
+  }
+
+  return exam
+}
+
+const getStudentAssignments = (studentId) =>
+  mockDb.examAssignments.filter((assignment) => assignment.studentId === studentId)
+
+const findAssignment = (studentId, examId) => {
+  const normalizedExamId = normalizeId(examId)
+  const assignment = mockDb.examAssignments.find(
+    (item) => item.studentId === studentId && item.examId === normalizedExamId,
+  )
+
+  if (!assignment) {
+    throw new ApiError('This exam is not assigned to the current student.', {
+      code: 'ASSIGNMENT_NOT_FOUND',
+      status: 404,
+    })
+  }
+
+  return assignment
+}
+
+const getStudentExamAttempts = (studentId, examId) =>
+  mockDb.examAttempts
+    .filter(
+      (attempt) =>
+        attempt.studentId === studentId && attempt.examId === normalizeId(examId),
+    )
+    .sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime())
+
+const findAttempt = (studentId, attemptId) => {
+  const normalizedAttemptId = normalizeAttemptId(attemptId)
+  const attempt = mockDb.examAttempts.find(
+    (item) => item.studentId === studentId && item.id === normalizedAttemptId,
+  )
+
+  if (!attempt) {
+    throw new ApiError('Exam attempt was not found.', {
+      code: 'ATTEMPT_NOT_FOUND',
+      status: 404,
+    })
+  }
+
+  return attempt
+}
+
+const appendActivity = (attempt, type, message) => {
+  attempt.activityLog = attempt.activityLog ?? []
+  attempt.activityLog.push({
+    id: createId('ACT'),
+    createdAt: new Date().toISOString(),
+    message,
+    type,
+  })
+}
+
+const sanitizeQuestionForTaking = (question) => {
+  const safeQuestion = { ...question }
+
+  delete safeQuestion.acceptedKeywords
+  delete safeQuestion.correctAnswer
+  delete safeQuestion.correctAnswers
+  delete safeQuestion.sampleAnswer
+  return safeQuestion
+}
+
+const sanitizeExamForTaking = (exam) => ({
+  ...exam,
+  questions: exam.questions.map(sanitizeQuestionForTaking),
+})
+
+const copyAttemptForClient = (attempt) => ({
+  ...attempt,
+  activityLog: attempt.activityLog ?? [],
+  answers: attempt.answers ?? {},
+})
+
+const updateScoreRecord = (attempt, exam, student) => {
+  const existingScore = mockDb.studentScores.find((score) => score.id === attempt.id)
+  const scoreRecord = {
+    id: attempt.id,
+    answers: Object.entries(attempt.answers ?? {}).map(([questionId, answer]) => ({
+      answer,
+      isCorrect:
+        attempt.scoreBreakdown?.find((item) => item.questionId === questionId)
+          ?.isCorrect ?? false,
+      questionId,
+    })),
+    examId: exam.id,
+    maxScore: attempt.maxScore,
+    score: attempt.score,
+    studentId: student.id,
+    studentName: student.name,
+    submittedAt: attempt.submittedAt,
+  }
+
+  if (existingScore) {
+    Object.assign(existingScore, scoreRecord)
+  } else {
+    mockDb.studentScores.push(scoreRecord)
+  }
+}
+
+const gradeAttempt = ({ attempt, exam, student, submittedBy = 'student' }) => {
+  const now = new Date().toISOString()
+  const scoreBreakdown = exam.questions.map((question) => ({
+    answer: attempt.answers?.[question.id] ?? '',
+    questionId: question.id,
+    ...gradeQuestionAnswer(question, attempt.answers?.[question.id]),
+  }))
+  const score = scoreBreakdown.reduce((total, item) => total + item.score, 0)
+  const maxScore = calculateMaxScore(exam.questions)
+
+  Object.assign(attempt, {
+    autosavedAt: now,
+    maxScore,
+    score,
+    scoreBreakdown,
+    status: ATTEMPT_STATUSES.graded,
+    submittedAt: now,
+    submittedBy,
+    teacherFeedback:
+      score / Math.max(maxScore, 1) >= 0.8
+        ? 'Strong work. Review the per-question feedback for small improvements.'
+        : 'Review the concepts marked in the feedback before your next attempt.',
+  })
+
+  appendActivity(
+    attempt,
+    submittedBy === 'timer' ? 'auto-submitted' : 'submitted',
+    submittedBy === 'timer'
+      ? 'Exam auto-submitted because the timer expired.'
+      : 'Exam submitted by student.',
+  )
+  updateScoreRecord(attempt, exam, student)
+
+  return attempt
+}
+
+const syncExpiredAttempts = () => {
+  let changed = false
+  const now = new Date()
+
+  mockDb.examAttempts.forEach((attempt) => {
+    if (
+      attempt.status === ATTEMPT_STATUSES.inProgress &&
+      isPast(attempt.expiresAt, now)
+    ) {
+      const exam = mockDb.exams.find((item) => item.id === attempt.examId)
+      const student = mockDb.users.find((item) => item.id === attempt.studentId)
+
+      if (exam && student) {
+        gradeAttempt({ attempt, exam, student, submittedBy: 'timer' })
+      } else {
+        attempt.status = ATTEMPT_STATUSES.expired
+      }
+
+      changed = true
+    }
+  })
+
+  if (changed) {
+    persistMockDb()
+  }
+}
+
+const getLatestSubmittedAttempt = (attempts) =>
+  attempts.find((attempt) =>
+    [ATTEMPT_STATUSES.graded, ATTEMPT_STATUSES.submitted].includes(attempt.status),
+  )
+
+const buildExamCard = (assignment) => {
+  const exam = findExam(assignment.examId)
+  const attempts = getStudentExamAttempts(assignment.studentId, assignment.examId)
+  const activeAttempt = attempts.find(
+    (attempt) => attempt.status === ATTEMPT_STATUSES.inProgress,
+  )
+  const latestSubmittedAttempt = getLatestSubmittedAttempt(attempts)
+  const now = new Date()
+  const upcoming = isFuture(assignment.opensAt, now)
+  const assignmentExpired = isPast(assignment.dueAt, now)
+  const remainingAttempts = Math.max(0, assignment.maxAttempts - attempts.length)
+  let status = EXAM_STATUSES.notStarted
+
+  if (activeAttempt) {
+    status = EXAM_STATUSES.inProgress
+  } else if (latestSubmittedAttempt?.status === ATTEMPT_STATUSES.graded) {
+    status = EXAM_STATUSES.graded
+  } else if (latestSubmittedAttempt?.status === ATTEMPT_STATUSES.submitted) {
+    status = EXAM_STATUSES.submitted
+  } else if (assignmentExpired) {
+    status = EXAM_STATUSES.expired
+  }
+
+  return {
+    assignmentId: assignment.id,
+    canContinue: Boolean(activeAttempt),
+    canStart: !activeAttempt && !upcoming && !assignmentExpired && remainingAttempts > 0,
+    completed: [EXAM_STATUSES.graded, EXAM_STATUSES.submitted].includes(status),
+    description: exam.description,
+    difficulty: exam.difficulty,
+    dueAt: assignment.dueAt,
+    durationMinutes: exam.durationMinutes,
+    examId: exam.id,
+    latestAttemptId: (latestSubmittedAttempt ?? activeAttempt)?.id ?? null,
+    maxAttempts: assignment.maxAttempts,
+    opensAt: assignment.opensAt,
+    questionCount: exam.questions.length,
+    remainingAttempts,
+    score:
+      latestSubmittedAttempt?.score != null
+        ? {
+            maxScore: latestSubmittedAttempt.maxScore,
+            score: latestSubmittedAttempt.score,
+          }
+        : null,
+    status,
+    subject: exam.subject,
+    title: exam.title,
+    upcoming,
+  }
+}
+
+const buildDashboardSummary = (cards, studentId) => {
+  const gradedAttempts = mockDb.examAttempts.filter(
+    (attempt) =>
+      attempt.studentId === studentId &&
+      attempt.status === ATTEMPT_STATUSES.graded &&
+      attempt.maxScore > 0,
+  )
+  const bySubject = new Map()
+
+  gradedAttempts.forEach((attempt) => {
+    const exam = mockDb.exams.find((item) => item.id === attempt.examId)
+    const subject = exam?.subject ?? 'General'
+    const current = bySubject.get(subject) ?? { count: 0, percentageTotal: 0, subject }
+
+    current.count += 1
+    current.percentageTotal += Math.round((attempt.score / attempt.maxScore) * 100)
+    bySubject.set(subject, current)
+  })
+
+  return {
+    available: cards.filter(
+      (card) =>
+        !card.upcoming &&
+        !card.completed &&
+        card.status !== EXAM_STATUSES.expired &&
+        card.status !== EXAM_STATUSES.inProgress,
+    ).length,
+    averageScore:
+      gradedAttempts.length > 0
+        ? Math.round(
+            gradedAttempts.reduce(
+              (total, attempt) => total + (attempt.score / attempt.maxScore) * 100,
+              0,
+            ) / gradedAttempts.length,
+          )
+        : null,
+    completed: cards.filter((card) => card.completed).length,
+    expired: cards.filter((card) => card.status === EXAM_STATUSES.expired).length,
+    inProgress: cards.filter((card) => card.status === EXAM_STATUSES.inProgress)
+      .length,
+    performanceBySubject: [...bySubject.values()].map((item) => ({
+      average: Math.round(item.percentageTotal / item.count),
+      count: item.count,
+      subject: item.subject,
+    })),
+    total: cards.length,
+    upcoming: cards.filter((card) => card.upcoming).length,
+  }
+}
+
+const filterCards = (cards, { group = DASHBOARD_FILTERS.all, search = '', status = 'all' }) => {
+  const normalizedSearch = search.trim().toLowerCase()
+
+  return cards.filter((card) => {
+    const matchesSearch =
+      !normalizedSearch ||
+      [card.examId, card.title, card.description, card.subject].some((value) =>
+        String(value ?? '').toLowerCase().includes(normalizedSearch),
+      )
+    const matchesStatus = status === 'all' || card.status === status
+    const matchesGroup =
+      group === DASHBOARD_FILTERS.all ||
+      (group === DASHBOARD_FILTERS.available &&
+        !card.upcoming &&
+        !card.completed &&
+        card.status !== EXAM_STATUSES.expired) ||
+      (group === DASHBOARD_FILTERS.upcoming && card.upcoming) ||
+      (group === DASHBOARD_FILTERS.completed && card.completed)
+
+    return matchesSearch && matchesStatus && matchesGroup
+  })
+}
+
+const paginate = (items, page = 1, pageSize = appConfig.exams.defaultPageSize) => {
+  const safePage = Math.max(1, Number(page) || 1)
+  const safePageSize = Math.max(1, Number(pageSize) || appConfig.exams.defaultPageSize)
+  const start = (safePage - 1) * safePageSize
+
+  return {
+    items: items.slice(start, start + safePageSize),
+    page: safePage,
+    pageSize: safePageSize,
+    total: items.length,
+  }
+}
+
+const listStudentExamsMock = (params = {}) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const cards = getStudentAssignments(student.id)
+      .map(buildExamCard)
+      .sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime())
+    const filteredCards = filterCards(cards, params)
+
+    return {
+      ...paginate(filteredCards, params.page, params.pageSize),
+      summary: buildDashboardSummary(cards, student.id),
+    }
+  })
+
+const getStudentExamDetailsMock = (examId) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const assignment = findAssignment(student.id, examId)
+    const exam = findExam(examId)
+    const attempts = getStudentExamAttempts(student.id, examId)
+
+    return {
+      assignment,
+      attempts: attempts.map(copyAttemptForClient),
+      card: buildExamCard(assignment),
+      exam: sanitizeExamForTaking(exam),
+    }
+  })
+
+const startOrResumeExamMock = (examId) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const assignment = findAssignment(student.id, examId)
+    const exam = findExam(examId)
+    const attempts = getStudentExamAttempts(student.id, examId)
+    const activeAttempt = attempts.find(
+      (attempt) => attempt.status === ATTEMPT_STATUSES.inProgress,
+    )
+
+    if (activeAttempt) {
+      appendActivity(activeAttempt, 'resumed', 'Exam resumed.')
+      persistMockDb()
+
+      return {
+        assignment,
+        attempt: copyAttemptForClient(activeAttempt),
+        exam: sanitizeExamForTaking(exam),
+        resumed: true,
+      }
+    }
+
+    if (isFuture(assignment.opensAt)) {
+      throw new ApiError('This exam is not open yet.', {
+        code: 'EXAM_NOT_OPEN',
+        status: 409,
+      })
+    }
+
+    if (isPast(assignment.dueAt)) {
+      throw new ApiError('This exam has expired.', {
+        code: 'EXAM_EXPIRED',
+        status: 409,
+      })
+    }
+
+    if (attempts.length >= assignment.maxAttempts) {
+      throw new ApiError('No attempts remain for this exam.', {
+        code: 'MAX_ATTEMPTS_REACHED',
+        status: 409,
+      })
+    }
+
+    const now = new Date()
+    const durationExpiresAt = new Date(
+      now.getTime() + exam.durationMinutes * 60 * 1000,
+    ).toISOString()
+    const attempt = {
+      id: createId('ATT'),
+      activityLog: [],
+      answers: {},
+      attemptNumber: attempts.length + 1,
+      autosavedAt: now.toISOString(),
+      examId: exam.id,
+      expiresAt: minIsoDate(durationExpiresAt, assignment.dueAt),
+      maxScore: calculateMaxScore(exam.questions),
+      score: null,
+      scoreBreakdown: [],
+      startedAt: now.toISOString(),
+      status: ATTEMPT_STATUSES.inProgress,
+      studentId: student.id,
+      submittedAt: null,
+      submittedBy: null,
+      teacherFeedback: '',
+    }
+
+    appendActivity(attempt, 'started', 'Exam started.')
+    mockDb.examAttempts.push(attempt)
+    persistMockDb()
+
+    return {
+      assignment,
+      attempt: copyAttemptForClient(attempt),
+      exam: sanitizeExamForTaking(exam),
+      resumed: false,
+    }
+  })
+
+const getAttemptContextMock = (attemptId) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const attempt = findAttempt(student.id, attemptId)
+    const assignment = findAssignment(student.id, attempt.examId)
+    const exam = findExam(attempt.examId)
+
+    return {
+      assignment,
+      attempt: copyAttemptForClient(attempt),
+      exam: sanitizeExamForTaking(exam),
+    }
+  })
+
+const saveAttemptDraftMock = (attemptId, answers) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const attempt = findAttempt(student.id, attemptId)
+
+    if (attempt.status !== ATTEMPT_STATUSES.inProgress) {
+      throw new ApiError('This attempt can no longer be edited.', {
+        code: 'ATTEMPT_LOCKED',
+        status: 409,
+      })
+    }
+
+    attempt.answers = answers ?? {}
+    attempt.autosavedAt = new Date().toISOString()
+    appendActivity(attempt, 'autosaved', 'Draft saved.')
+    persistMockDb()
+
+    return copyAttemptForClient(attempt)
+  })
+
+const submitAttemptMock = (attemptId, { allowIncomplete = false, answers = {}, submittedBy = 'student' } = {}) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const attempt = findAttempt(student.id, attemptId)
+    const exam = findExam(attempt.examId)
+
+    if (attempt.status !== ATTEMPT_STATUSES.inProgress) {
+      return {
+        attempt: copyAttemptForClient(attempt),
+        exam,
+      }
+    }
+
+    const nextAnswers = answers ?? attempt.answers ?? {}
+    const missingQuestionIds = getMissingQuestionIds(exam.questions, nextAnswers)
+
+    if (!allowIncomplete && missingQuestionIds.length > 0) {
+      throw new ApiError('Please answer every question before submitting.', {
+        code: 'SUBMISSION_INCOMPLETE',
+        details: { missingQuestionIds },
+        status: 400,
+      })
+    }
+
+    attempt.answers = nextAnswers
+    gradeAttempt({ attempt, exam, student, submittedBy })
+    persistMockDb()
+
+    return {
+      attempt: copyAttemptForClient(attempt),
+      exam,
+    }
+  })
+
+const getAttemptResultMock = (attemptId) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    syncExpiredAttempts()
+
+    const attempt = findAttempt(student.id, attemptId)
+    const assignment = findAssignment(student.id, attempt.examId)
+    const exam = findExam(attempt.examId)
+
+    if (attempt.status === ATTEMPT_STATUSES.inProgress) {
+      throw new ApiError('This attempt has not been submitted yet.', {
+        code: 'RESULT_NOT_READY',
+        status: 409,
+      })
+    }
+
+    return {
+      assignment,
+      attempt: copyAttemptForClient(attempt),
+      exam,
+      history: getStudentExamAttempts(student.id, attempt.examId).map(copyAttemptForClient),
+    }
+  })
+
+const getStudentActivityMock = () =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+
+    return mockDb.examAttempts
+      .filter((attempt) => attempt.studentId === student.id)
+      .flatMap((attempt) => {
+        const exam = mockDb.exams.find((item) => item.id === attempt.examId)
+
+        return (attempt.activityLog ?? []).map((activity) => ({
+          ...activity,
+          attemptId: attempt.id,
+          examId: attempt.examId,
+          examTitle: exam?.title ?? attempt.examId,
+        }))
+      })
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  })
+
+const recordAttemptActivityMock = (attemptId, { message, type }) =>
+  mockRequest(() => {
+    const student = requireMockRole(USER_ROLES.student)
+    const attempt = findAttempt(student.id, attemptId)
+
+    appendActivity(attempt, type, message)
+    persistMockDb()
+
+    return copyAttemptForClient(attempt)
+  })
+
 export const getAllExams = async () =>
-  apiClient.isMock ? mockRequest(() => mockDb.exams) : apiClient.get('/exams')
+  apiClient.isMock
+    ? mockRequest(() => mockDb.exams)
+    : apiClient.get('/exams', { cacheKey: 'exams:list', cacheTtlMs: 30000 })
 
 export const getExamById = async (id) =>
   apiClient.isMock
-    ? mockRequest(() => {
-        const exam = mockDb.exams.find((item) => item.id === normalizeId(id))
-
-        if (!exam) {
-          throw new Error(`Exam "${id}" was not found.`)
-        }
-
-        return exam
+    ? mockRequest(() => findExam(id))
+    : apiClient.get(`/exams/${normalizeId(id)}`, {
+        cacheKey: `exams:${normalizeId(id)}`,
+        cacheTtlMs: 30000,
       })
-    : apiClient.get(`/exams/${normalizeId(id)}`)
 
 /** Typo alias kept for backward compatibility with any existing imports */
 export const getExamByld = getExamById
@@ -32,14 +623,18 @@ export const createExam = async (exam) =>
     ? mockRequest(() => {
         const nextExam = {
           id: exam.id ? normalizeId(exam.id) : `EX-${Date.now()}`,
-          title: exam.title,
-          description: exam.description ?? '',
-          durationMinutes: Number(exam.durationMinutes ?? 60),
+          createdAt: new Date().toISOString(),
           createdBy: exam.createdBy ?? 'Teacher',
+          description: exam.description ?? '',
+          difficulty: exam.difficulty ?? 'Foundational',
+          durationMinutes: Number(exam.durationMinutes ?? 60),
           questions: exam.questions ?? [],
+          subject: exam.subject ?? 'General',
+          title: exam.title,
         }
 
         mockDb.exams.push(nextExam)
+        persistMockDb()
         return nextExam
       })
     : apiClient.post('/exams', exam)
@@ -53,3 +648,51 @@ export const getScoresByExamId = async (examId) =>
         mockDb.studentScores.filter((score) => score.examId === normalizeId(examId)),
       )
     : apiClient.get(`/exams/${normalizeId(examId)}/scores`)
+
+export const listStudentExams = async (params = {}) =>
+  apiClient.isMock
+    ? listStudentExamsMock(params)
+    : apiClient.get(`/student/exams${toQueryString(params)}`, {
+        cacheKey: `student:exams:${toQueryString(params)}`,
+        cacheTtlMs: 10000,
+      })
+
+export const getStudentExamDetails = async (examId) =>
+  apiClient.isMock
+    ? getStudentExamDetailsMock(examId)
+    : apiClient.get(`/student/exams/${normalizeId(examId)}`)
+
+export const startOrResumeExam = async (examId) =>
+  apiClient.isMock
+    ? startOrResumeExamMock(examId)
+    : apiClient.post(`/student/exams/${normalizeId(examId)}/attempts`)
+
+export const getAttemptContext = async (attemptId) =>
+  apiClient.isMock
+    ? getAttemptContextMock(attemptId)
+    : apiClient.get(`/student/attempts/${encodeURIComponent(attemptId)}`)
+
+export const saveAttemptDraft = async (attemptId, answers) =>
+  apiClient.isMock
+    ? saveAttemptDraftMock(attemptId, answers)
+    : apiClient.put(`/student/attempts/${encodeURIComponent(attemptId)}/draft`, {
+        answers,
+      })
+
+export const submitAttempt = async (attemptId, payload) =>
+  apiClient.isMock
+    ? submitAttemptMock(attemptId, payload)
+    : apiClient.post(`/student/attempts/${encodeURIComponent(attemptId)}/submit`, payload)
+
+export const getAttemptResult = async (attemptId) =>
+  apiClient.isMock
+    ? getAttemptResultMock(attemptId)
+    : apiClient.get(`/student/attempts/${encodeURIComponent(attemptId)}/result`)
+
+export const getStudentActivity = async () =>
+  apiClient.isMock ? getStudentActivityMock() : apiClient.get('/student/activity')
+
+export const recordAttemptActivity = async (attemptId, payload) =>
+  apiClient.isMock
+    ? recordAttemptActivityMock(attemptId, payload)
+    : apiClient.post(`/student/attempts/${encodeURIComponent(attemptId)}/activity`, payload)

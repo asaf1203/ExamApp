@@ -1,5 +1,6 @@
 const DEFAULT_MOCK_DELAY_MS = 450
 const DEFAULT_SESSION_TTL_MS = 1000 * 60 * 60 * 8
+const DEFAULT_REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 7
 
 const rawEnv = import.meta.env ?? {}
 
@@ -81,13 +82,27 @@ export const appConfig = Object.freeze({
     dataSource: apiDataSource,
     isMock: apiDataSource === 'mock',
     mockDelayMs: readNumber('VITE_MOCK_API_DELAY_MS', DEFAULT_MOCK_DELAY_MS),
+    mockErrorRate: readNumber('VITE_MOCK_API_ERROR_RATE', 0),
+    mockDbStorageKey: readString('VITE_MOCK_DB_STORAGE_KEY', 'examPlatform.mockDb.v2'),
+    retryCount: readNumber('VITE_API_RETRY_COUNT', 1),
     timeoutMs: readNumber('VITE_API_TIMEOUT_MS', 10000),
   }),
   auth: Object.freeze({
+    refreshTokenStorageKey: readString(
+      'VITE_AUTH_REFRESH_TOKEN_KEY',
+      'examPlatform.refreshToken',
+    ),
     tokenStorageKey: readString('VITE_AUTH_TOKEN_KEY', 'examPlatform.authToken'),
+    refreshTtlMs: readNumber('VITE_AUTH_REFRESH_TTL_MS', DEFAULT_REFRESH_TTL_MS),
     sessionTtlMs: readNumber('VITE_AUTH_SESSION_TTL_MS', DEFAULT_SESSION_TTL_MS),
   }),
+  exams: Object.freeze({
+    autoSaveDebounceMs: readNumber('VITE_EXAM_AUTOSAVE_DEBOUNCE_MS', 900),
+    defaultPageSize: readNumber('VITE_EXAM_PAGE_SIZE', 20),
+  }),
   features: Object.freeze({
+    darkMode: readBoolean('VITE_FEATURE_DARK_MODE', true),
+    passwordReset: readBoolean('VITE_FEATURE_PASSWORD_RESET', true),
     registration: readBoolean('VITE_FEATURE_REGISTRATION', true),
     studentPortal: readBoolean('VITE_FEATURE_STUDENT_PORTAL', true),
     teacherDashboard: readBoolean('VITE_FEATURE_TEACHER_DASHBOARD', true),
