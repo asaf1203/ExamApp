@@ -241,6 +241,10 @@ const buildEnvConfig = () => {
         defaultPublicConfig.ui.countdownTickMs,
       ),
       defaultTheme: readString('VITE_UI_DEFAULT_THEME', defaultPublicConfig.ui.defaultTheme),
+      notificationPollMs: readNumber(
+        'VITE_NOTIFICATION_POLL_MS',
+        defaultPublicConfig.ui.notificationPollMs,
+      ),
       themeStorageKey: readString(
         'VITE_THEME_STORAGE_KEY',
         defaultPublicConfig.ui.themeStorageKey,

@@ -1,9 +1,10 @@
+import { EXAM_LIFECYCLE_STATUSES } from './domainModels'
 import { QUESTION_TYPES } from './examModels'
 
 export const TEACHER_EXAM_STATUSES = Object.freeze({
-  draft: 'draft',
-  published: 'published',
-  archived: 'archived',
+  archived: EXAM_LIFECYCLE_STATUSES.archived,
+  draft: EXAM_LIFECYCLE_STATUSES.draft,
+  published: EXAM_LIFECYCLE_STATUSES.published,
 })
 
 export const TEACHER_EXAM_STATUS_LABELS = Object.freeze({
@@ -13,17 +14,21 @@ export const TEACHER_EXAM_STATUS_LABELS = Object.freeze({
 })
 
 export const TEACHER_SUBMISSION_STATUSES = Object.freeze({
-  submitted: 'submitted',
+  expired: 'expired',
   grading: 'grading',
   graded: 'graded',
+  inProgress: EXAM_LIFECYCLE_STATUSES.inProgress,
   published: 'published',
+  submitted: EXAM_LIFECYCLE_STATUSES.submitted,
 })
 
 export const TEACHER_SUBMISSION_STATUS_LABELS = Object.freeze({
-  [TEACHER_SUBMISSION_STATUSES.submitted]: 'Submitted',
+  [TEACHER_SUBMISSION_STATUSES.expired]: 'Expired',
   [TEACHER_SUBMISSION_STATUSES.grading]: 'In Review',
   [TEACHER_SUBMISSION_STATUSES.graded]: 'Graded',
+  [TEACHER_SUBMISSION_STATUSES.inProgress]: 'In Progress',
   [TEACHER_SUBMISSION_STATUSES.published]: 'Published',
+  [TEACHER_SUBMISSION_STATUSES.submitted]: 'Submitted',
 })
 
 export const TEACHER_EXAM_FILTERS = Object.freeze({

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { USER_ROLES } from '../api/authService'
+import { NotificationCenter } from '../components/NotificationCenter'
 import { ThemeToggle } from '../components/ThemeToggle'
 import { appConfig } from '../config'
 import { useAuth } from '../auth/authState'
@@ -100,6 +101,7 @@ export function AppLayout({ children }) {
             </nav>
 
             <div className="topbar-actions">
+              <NotificationCenter refreshKey={path} />
               <ThemeToggle />
               <div className="user-chip">
                 <span className="text-capitalize">{currentUser.role}</span>

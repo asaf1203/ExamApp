@@ -172,6 +172,8 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
   }
 
   const { exam, nextSubmissionId, previousSubmissionId, submission } = context
+  const isActiveSubmission =
+    submission.status === TEACHER_SUBMISSION_STATUSES.inProgress
 
   return (
     <section className="page-stack">
@@ -215,7 +217,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
         <article className="summary-card">
           <span>Duration</span>
           <strong>{formatDuration(submission.durationMinutes)}</strong>
-          <small>Completed attempt</small>
+          <small>{isActiveSubmission ? 'Active attempt' : 'Completed attempt'}</small>
         </article>
         <article className="summary-card">
           <span>Results</span>
@@ -230,6 +232,12 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
 
       <section className="grading-layout">
         <div className="grading-main">
+          {isActiveSubmission && (
+            <div className="alert alert-warning" role="status">
+              This attempt is still in progress. You can monitor saved answers, but
+              grading is locked until the student submits.
+            </div>
+          )}
           {exam.questions.map((question, index) => {
             const grade = questionGrades.find((item) => item.questionId === question.id)
 
@@ -260,6 +268,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
                     </label>
                     <input
                       className="form-control"
+                      disabled={isActiveSubmission}
                       id={`${question.id}-score`}
                       max={grade?.maxScore ?? question.points}
                       min="0"
@@ -290,6 +299,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
                     </label>
                     <textarea
                       className="form-control"
+                      disabled={isActiveSubmission}
                       id={`${question.id}-feedback`}
                       onChange={(event) =>
                         updateQuestionGrade(question.id, {
@@ -319,6 +329,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
               </label>
               <textarea
                 className="form-control"
+                disabled={isActiveSubmission}
                 id="overallFeedback"
                 onChange={(event) => setOverallFeedback(event.target.value)}
                 rows={5}
@@ -328,7 +339,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
             <div className="d-grid gap-2 mt-3">
               <button
                 className="btn btn-outline-primary"
-                disabled={saving}
+                disabled={saving || isActiveSubmission}
                 onClick={saveDraft}
                 type="button"
               >
@@ -336,7 +347,7 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
               </button>
               <button
                 className="btn btn-outline-primary"
-                disabled={saving}
+                disabled={saving || isActiveSubmission}
                 onClick={() => setConfirmAction('complete')}
                 type="button"
               >
@@ -345,7 +356,9 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
               <button
                 className="btn btn-primary"
                 disabled={
-                  saving || submission.status === TEACHER_SUBMISSION_STATUSES.published
+                  saving ||
+                  submission.status === TEACHER_SUBMISSION_STATUSES.published ||
+                  isActiveSubmission
                 }
                 onClick={() => setConfirmAction('publish')}
                 type="button"
@@ -355,7 +368,9 @@ export function TeacherSubmissionReviewPage({ submissionId }) {
               <button
                 className="btn btn-outline-primary"
                 disabled={
-                  saving || submission.status !== TEACHER_SUBMISSION_STATUSES.published
+                  saving ||
+                  submission.status !== TEACHER_SUBMISSION_STATUSES.published ||
+                  isActiveSubmission
                 }
                 onClick={() => setConfirmAction('hide')}
                 type="button"
