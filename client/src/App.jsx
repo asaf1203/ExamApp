@@ -1,104 +1,187 @@
-import { useState } from 'react'
+import { useEffect } from 'react'
 import './App.css'
 import { USER_ROLES } from './api/authService'
 import { AuthProvider } from './auth/AuthContext'
 import AuthScreen from './auth/AuthScreen'
 import { useAuth } from './auth/authState'
 import { appConfig } from './config'
-import StudentPortal from './StudentPortal'
-import TeacherDashboard from './TeacherDashboard'
+import { StudentDashboard } from './features/student-exams/pages/StudentDashboard'
+import { ExamInstructionsPage } from './features/student-exams/pages/ExamInstructionsPage'
+import { ExamTakingPage } from './features/student-exams/pages/ExamTakingPage'
+import { ResultsPage } from './features/student-exams/pages/ResultsPage'
+import { TeacherDashboardPage } from './features/teacher-exams/pages/TeacherDashboardPage'
+import { TeacherExamEditorPage } from './features/teacher-exams/pages/TeacherExamEditorPage'
+import { TeacherExamListPage } from './features/teacher-exams/pages/TeacherExamListPage'
+import { TeacherExamPreviewPage } from './features/teacher-exams/pages/TeacherExamPreviewPage'
+import { TeacherSubmissionReviewPage } from './features/teacher-exams/pages/TeacherSubmissionReviewPage'
+import { TeacherSubmissionsPage } from './features/teacher-exams/pages/TeacherSubmissionsPage'
+import { AppLayout } from './layout/AppLayout'
+import { NotFoundPage } from './pages/NotFoundPage'
+import { ProfilePage } from './pages/ProfilePage'
+import { UnauthorizedPage } from './pages/UnauthorizedPage'
+import {
+  ROUTES,
+  RouterProvider,
+  useRouter,
+} from './routing/router'
+import { ErrorBoundary } from './ui/ErrorBoundary'
+import { ThemeProvider } from './ui/ThemeContext'
+import { ToastProvider } from './ui/ToastContext'
 
-function AuthenticatedApp() {
-  const { currentUser, initializing, logout } = useAuth()
-  const [loggingOut, setLoggingOut] = useState(false)
+const studentRouteNames = new Set([
+  'studentDashboard',
+  'studentProfile',
+  'examInstructions',
+  'examTaking',
+  'examResults',
+])
+const teacherRouteNames = new Set([
+  'teacherDashboard',
+  'teacherExams',
+  'teacherExamCreate',
+  'teacherExamEdit',
+  'teacherExamPreview',
+  'teacherSubmissions',
+  'teacherSubmissionReview',
+])
 
-  const handleLogout = async () => {
-    setLoggingOut(true)
+const defaultPathForRole = (role) =>
+  role === USER_ROLES.teacher ? ROUTES.teacherDashboard : ROUTES.studentDashboard
 
-    try {
-      await logout()
-    } finally {
-      setLoggingOut(false)
-    }
-  }
-
-  if (initializing) {
-    return (
-      <main className="app-shell bg-body-tertiary">
-        <div className="container py-4 py-md-5">
-          <div className="alert alert-info mb-0" role="status">
-            Checking session...
-          </div>
-        </div>
-      </main>
-    )
-  }
-
-  if (!currentUser) {
-    return (
-      <main className="app-shell bg-body-tertiary">
-        <div className="container py-4 py-md-5">
-          <AuthScreen />
-        </div>
-      </main>
-    )
-  }
-
-  const isTeacher =
-    currentUser.role === USER_ROLES.teacher && appConfig.features.teacherDashboard
-  const isStudent =
-    currentUser.role === USER_ROLES.student && appConfig.features.studentPortal
-
+function FullPageLoading() {
   return (
-    <main className="app-shell bg-body-tertiary">
-      <div className="container py-4 py-md-5">
-        <div className="card border-0 shadow-sm mb-4">
-          <div className="card-body d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-3">
-            <div className="text-start">
-              <p className="text-uppercase text-primary fw-semibold small mb-1">
-                {appConfig.app.name}
-              </p>
-              <h1 className="h2 mb-1">{appConfig.app.title}</h1>
-              <p className="text-secondary mb-0">{appConfig.app.description}</p>
-            </div>
-
-            <div className="d-flex flex-column flex-sm-row align-items-sm-center gap-2 text-start text-sm-end">
-              <div>
-                <span className="badge text-bg-primary text-capitalize mb-1">
-                  {currentUser.role}
-                </span>
-                <div className="fw-semibold">{currentUser.name}</div>
-                <div className="text-secondary small">{currentUser.email}</div>
-              </div>
-              <button
-                className="btn btn-outline-primary"
-                disabled={loggingOut}
-                onClick={handleLogout}
-                type="button"
-              >
-                {loggingOut ? 'Logging out...' : 'Logout'}
-              </button>
-            </div>
-          </div>
+    <main className="app-shell">
+      <div className="container app-container py-5">
+        <div className="app-panel p-4" role="status">
+          Checking session...
         </div>
-
-        {isTeacher && <TeacherDashboard />}
-        {isStudent && <StudentPortal />}
-        {!isTeacher && !isStudent && (
-          <div className="alert alert-danger" role="alert">
-            This role is not enabled in the current configuration.
-          </div>
-        )}
       </div>
     </main>
   )
 }
 
+function isRouteAllowed(routeName, role) {
+  if (studentRouteNames.has(routeName)) {
+    return role === USER_ROLES.student
+  }
+
+  if (teacherRouteNames.has(routeName)) {
+    return role === USER_ROLES.teacher
+  }
+
+  return true
+}
+
+function RouteSwitch() {
+  const { currentUser } = useAuth()
+  const { route } = useRouter()
+
+  if (!isRouteAllowed(route.name, currentUser.role)) {
+    return <UnauthorizedPage role={currentUser.role} />
+  }
+
+  if (
+    studentRouteNames.has(route.name) &&
+    !appConfig.features.studentPortal
+  ) {
+    return (
+      <div className="alert alert-danger" role="alert">
+        Student portal is disabled in the current configuration.
+      </div>
+    )
+  }
+
+  if (
+    teacherRouteNames.has(route.name) &&
+    !appConfig.features.teacherDashboard
+  ) {
+    return (
+      <div className="alert alert-danger" role="alert">
+        Teacher dashboard is disabled in the current configuration.
+      </div>
+    )
+  }
+
+  switch (route.name) {
+    case 'studentDashboard':
+      return <StudentDashboard />
+    case 'studentProfile':
+      return <ProfilePage />
+    case 'examInstructions':
+      return <ExamInstructionsPage examId={route.params.examId} />
+    case 'examTaking':
+      return (
+        <ExamTakingPage
+          attemptId={route.params.attemptId}
+          examId={route.params.examId}
+        />
+      )
+    case 'examResults':
+      return <ResultsPage attemptId={route.params.attemptId} />
+    case 'teacherDashboard':
+      return <TeacherDashboardPage />
+    case 'teacherExams':
+      return <TeacherExamListPage />
+    case 'teacherExamCreate':
+      return <TeacherExamEditorPage mode="create" />
+    case 'teacherExamEdit':
+      return <TeacherExamEditorPage examId={route.params.examId} />
+    case 'teacherExamPreview':
+      return <TeacherExamPreviewPage examId={route.params.examId} />
+    case 'teacherSubmissions':
+      return <TeacherSubmissionsPage />
+    case 'teacherSubmissionReview':
+      return <TeacherSubmissionReviewPage submissionId={route.params.submissionId} />
+    case 'home':
+    case 'login':
+      return null
+    default:
+      return <NotFoundPage role={currentUser.role} />
+  }
+}
+
+function AuthenticatedApp() {
+  const { currentUser, initializing } = useAuth()
+  const { navigate, route } = useRouter()
+
+  useEffect(() => {
+    if (initializing || !currentUser) {
+      return
+    }
+
+    if (route.name === 'home' || route.name === 'login') {
+      navigate(defaultPathForRole(currentUser.role), { replace: true })
+    }
+  }, [currentUser, initializing, navigate, route.name])
+
+  if (initializing) {
+    return <FullPageLoading />
+  }
+
+  if (!currentUser) {
+    return <AuthScreen />
+  }
+
+  return (
+    <AppLayout>
+      <RouteSwitch />
+    </AppLayout>
+  )
+}
+
 function App() {
   return (
-    <AuthProvider>
-      <AuthenticatedApp />
-    </AuthProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <ToastProvider>
+          <RouterProvider>
+            <AuthProvider>
+              <AuthenticatedApp />
+            </AuthProvider>
+          </RouterProvider>
+        </ToastProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   )
 }
 
