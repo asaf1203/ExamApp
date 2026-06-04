@@ -1,0 +1,80 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "server:dev",
+      "type": "shell",
+      "command": "npm.cmd",
+      "args": ["run", "dev"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "server",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "Server listening on http://localhost:[0-9]+"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "client:dev:mock",
+      "type": "shell",
+      "command": "npm.cmd",
+      "args": ["run", "dev:mock"],
+      "options": {
+        "cwd": "${workspaceFolder}/client"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "client",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "Local: +http://localhost:[0-9]+/"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    },
+    {
+      "label": "client:dev:server",
+      "type": "shell",
+      "command": "npm.cmd",
+      "args": ["run", "dev:server"],
+      "options": {
+        "cwd": "${workspaceFolder}/client"
+      },
+      "isBackground": true,
+      "problemMatcher": {
+        "owner": "client",
+        "pattern": {
+          "regexp": "^$"
+        },
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "Local: +http://localhost:[0-9]+/"
+        }
+      },
+      "presentation": {
+        "panel": "dedicated",
+        "reveal": "always"
+      }
+    }
+  ]
+}

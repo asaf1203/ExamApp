@@ -1,0 +1,46 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Debug Client Only (Mock API)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "preLaunchTask": "client:dev:mock",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/client/src",
+      "sourceMaps": true
+    },
+    {
+      "name": "Debug Server Only",
+      "type": "node",
+      "request": "launch",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["--watch"],
+      "program": "${workspaceFolder}/server.js",
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "internalConsoleOptions": "neverOpen",
+      "restart": true,
+      "skipFiles": ["<node_internals>/**"]
+    },
+    {
+      "name": "Debug Client (Server API)",
+      "type": "pwa-chrome",
+      "request": "launch",
+      "preLaunchTask": "client:dev:server",
+      "url": "http://localhost:5173",
+      "webRoot": "${workspaceFolder}/client/src",
+      "sourceMaps": true
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Debug Both (Client + Server)",
+      "configurations": [
+        "Debug Server Only",
+        "Debug Client (Server API)"
+      ],
+      "stopAll": true
+    }
+  ]
+}

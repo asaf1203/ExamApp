@@ -28,6 +28,17 @@ The server runs on `http://localhost:3000` by default and exposes:
 - `GET /health`
 - `GET /api/db`
 - `POST /api/db/reset`
+- CRUD:
+  - `GET /api/exams`
+  - `POST /api/exams`
+  - `GET /api/exams/:examId`
+  - `PUT /api/exams/:examId`
+  - `DELETE /api/exams/:examId`
+  - `GET /api/users`
+  - `POST /api/users`
+  - `GET /api/users/:userId`
+  - `PUT /api/users/:userId`
+  - `DELETE /api/users/:userId`
 
 The `/api` routes use an in-memory JSON store seeded with the same demo roles as
 the client mock mode:
@@ -43,15 +54,32 @@ data.
 Keep client-only mock mode:
 
 ```sh
-VITE_API_BACKEND=mock
+npm --prefix client run dev:mock
 ```
 
 Call the Express server instead:
 
 ```sh
-VITE_API_BACKEND=http
-VITE_API_BASE_URL=http://localhost:3000/api
-VITE_AUTH_API_URL=http://localhost:3000/api/auth
+npm --prefix client run dev:server
 ```
 
-An example file is available at `client/.env.server.example`.
+The mode files are `client/.env.mock` and `client/.env.server`. Example files are
+also available as `client/.env.mock.example` and `client/.env.server.example`.
+
+From the repository root, these shortcuts are also available:
+
+```sh
+npm run client:dev:mock
+npm run client:dev:server
+```
+
+## VS Code Debugging
+
+The workspace includes debug configurations for:
+
+- `Debug Client Only (Mock API)`: starts Vite with `client/.env.mock`.
+- `Debug Server Only`: starts `server.js` with the Node debugger.
+- `Debug Client (Server API)`: starts Vite with `client/.env.server`.
+- `Debug Both (Client + Server)`: starts the server debugger and server-backed client together.
+
+Each dev task uses a dedicated terminal panel so client and server logs stay separate.
