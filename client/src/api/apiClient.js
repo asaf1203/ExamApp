@@ -191,6 +191,66 @@ const parseResponse = async (response) => {
   return payload
 }
 
+export class ApiDataClient {
+  constructor({ config = appConfig, configServiceRef = configService } = {}) {
+    this.authApiUrl = config.api.authApiUrl
+    this.baseUrl = config.api.baseUrl
+    this.config = config
+    this.dataSource = config.api.dataSource
+    this.isMock = configServiceRef.isMockApiEnabled()
+    this.version = config.api.version
+  }
+
+  getConfiguration() {
+    return {
+      authApiUrl: this.authApiUrl,
+      baseUrl: this.baseUrl,
+      dataSource: this.dataSource,
+      isMock: this.isMock,
+      version: this.version,
+    }
+  }
+
+  async fetchConfiguration() {
+    if (this.isMock) {
+      return this.getConfiguration()
+    }
+
+    return this.get('/config', {
+      cacheKey: 'api:config',
+      cacheTtlMs: this.config.api.cacheTtlMs,
+    })
+  }
+
+  mockRequest(handler, options = {}) {
+    return mockRequest(handler, options)
+  }
+
+  request(path, options = {}) {
+    return httpRequest(path, options)
+  }
+
+  requestWithoutRetry(path, options = {}) {
+    return httpRequestWithoutRetry(path, options)
+  }
+
+  get(path, options) {
+    return this.request(path, { ...options, method: 'GET' })
+  }
+
+  post(path, body, options) {
+    return this.request(path, { ...options, body, method: 'POST' })
+  }
+
+  put(path, body, options) {
+    return this.request(path, { ...options, body, method: 'PUT' })
+  }
+
+  del(path, options) {
+    return this.request(path, { ...options, method: 'DELETE' })
+  }
+}
+
 export const httpRequest = async (path, options = {}) => {
   const { cacheKey, cacheTtlMs, ...requestOptions } = options
   const isCacheable = requestOptions.method === 'GET' && cacheKey
@@ -314,16 +374,4 @@ export const httpRequestWithoutRetry = async (path, options = {}) => {
   }
 }
 
-export const apiClient = Object.freeze({
-  baseUrl: appConfig.api.baseUrl,
-  authApiUrl: appConfig.api.authApiUrl,
-  dataSource: appConfig.api.dataSource,
-  isMock: configService.isMockApiEnabled(),
-  mockRequest,
-  version: appConfig.api.version,
-  get: (path, options) => httpRequest(path, { ...options, method: 'GET' }),
-  post: (path, body, options) =>
-    httpRequest(path, { ...options, body, method: 'POST' }),
-  put: (path, body, options) => httpRequest(path, { ...options, body, method: 'PUT' }),
-  del: (path, options) => httpRequest(path, { ...options, method: 'DELETE' }),
-})
+export const apiClient = Object.freeze(new ApiDataClient())

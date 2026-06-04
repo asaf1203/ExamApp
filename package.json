@@ -1,5 +1,16 @@
 {
+  "name": "exam-app-server",
+  "version": "1.0.0",
+  "description": "Initial Express server for the ExamApp project.",
+  "main": "server.js",
+  "scripts": {
+    "client:dev:mock": "npm --prefix client run dev:mock",
+    "client:dev:server": "npm --prefix client run dev:server",
+    "start": "node server.js",
+    "dev": "node --watch server.js"
+  },
   "dependencies": {
-    "bootstrap": "^5.3.8"
+    "bootstrap": "^5.3.8",
+    "express": "^5.2.1"
   }
 }
