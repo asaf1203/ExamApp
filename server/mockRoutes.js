@@ -8,10 +8,44 @@ const {
   createToken,
   db,
   publicUser,
+  replaceStore,
   resetStore,
 } = require("./mockStore");
+const { loadStore, saveStore } = require("./db/storeRepository");
 
 const router = express.Router();
+
+router.use(async (req, res, next) => {
+  try {
+    replaceStore(await loadStore());
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const originalJson = res.json.bind(res);
+
+  res.json = (body) => {
+    if (res.statusCode >= 400) {
+      return originalJson(body);
+    }
+
+    saveStore(db)
+      .then(() => originalJson(body))
+      .catch(next);
+
+    return res;
+  };
+
+  next();
+});
 
 const normalizeEmail = (email) => String(email ?? "").trim().toLowerCase();
 const normalizeId = (id) => String(id ?? "").trim().toUpperCase();
@@ -242,8 +276,121 @@ const attemptToSubmission = (attempt, exam) => {
   };
 };
 
+router.get("/", (req, res) => {
+  res.json({
+    name: "ExamApp memory API",
+    storage: "memory",
+    endpoints: {
+      auth: "/api/auth/*",
+      config: "/api/config",
+      db: "/api/db",
+      exams: "/api/exams",
+      notifications: "/api/notifications",
+      student: "/api/student/*",
+      teacher: "/api/teacher/*",
+      users: "/api/users",
+    },
+  });
+});
+
+router.get("/config", (req, res) => {
+  res.json({
+    api: {
+      backendMode: "http",
+      baseUrl: "/api",
+      dataSource: "server-memory",
+      version: "v1",
+    },
+    auth: {
+      demoAccounts: [
+        { email: "student@example.com", password: "student123", role: "student" },
+        { email: "teacher@example.com", password: "teacher123", role: "teacher" },
+      ],
+    },
+    storage: {
+      persistent: false,
+      type: "memory",
+    },
+  });
+});
+
 router.get("/db", (req, res) => res.json(clone(db)));
 router.post("/db/reset", (req, res) => res.json(clone(resetStore())));
+
+router.get("/users", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(db.users.map(publicUser));
+});
+router.post("/users", (req, res) => {
+  requireRole(req, "teacher");
+  const { email, name, password, role } = req.body ?? {};
+  const normalizedEmail = normalizeEmail(email);
+  const normalizedRole = String(role ?? "").trim().toLowerCase();
+
+  if (!name || !normalizedEmail || !password || !["student", "teacher"].includes(normalizedRole)) {
+    throw new HttpError("Name, email, password, and role are required.", 400, "VALIDATION_ERROR");
+  }
+
+  if (db.users.some((user) => user.email === normalizedEmail)) {
+    throw new HttpError("An account with this email already exists.", 409, "EMAIL_TAKEN");
+  }
+
+  const now = nowIso();
+  const user = {
+    id: `${normalizedRole === "teacher" ? "TCH" : "STU"}-${Date.now()}`,
+    createdAt: now,
+    email: normalizedEmail,
+    name: String(name).trim(),
+    password,
+    role: normalizedRole,
+    updatedAt: now,
+  };
+
+  db.users.push(user);
+  res.status(201).json(publicUser(user));
+});
+router.get("/users/:userId", (req, res) => {
+  requireRole(req, "teacher");
+  const user = db.users.find((item) => item.id === req.params.userId);
+
+  if (!user) {
+    throw new HttpError("User was not found.", 404, "USER_NOT_FOUND");
+  }
+
+  res.json(publicUser(user));
+});
+router.put("/users/:userId", (req, res) => {
+  requireRole(req, "teacher");
+  const user = db.users.find((item) => item.id === req.params.userId);
+
+  if (!user) {
+    throw new HttpError("User was not found.", 404, "USER_NOT_FOUND");
+  }
+
+  Object.assign(user, {
+    email: req.body?.email ? normalizeEmail(req.body.email) : user.email,
+    name: req.body?.name ?? user.name,
+    password: req.body?.password ?? user.password,
+    role: req.body?.role ?? user.role,
+    updatedAt: nowIso(),
+  });
+  res.json(publicUser(user));
+});
+router.delete("/users/:userId", (req, res) => {
+  requireRole(req, "teacher");
+  const user = db.users.find((item) => item.id === req.params.userId);
+
+  if (!user) {
+    throw new HttpError("User was not found.", 404, "USER_NOT_FOUND");
+  }
+
+  db.users = db.users.filter((item) => item.id !== user.id);
+  db.sessions = db.sessions.filter((session) => session.userId !== user.id);
+  db.examAssignments = db.examAssignments.filter((assignment) => assignment.studentId !== user.id);
+  db.examAttempts = db.examAttempts.filter((attempt) => attempt.studentId !== user.id);
+  db.studentScores = db.studentScores.filter((score) => score.studentId !== user.id);
+  res.json({ success: true });
+});
 
 router.post("/auth/login", (req, res) => {
   const { email, password } = req.body ?? {};
@@ -314,6 +461,19 @@ router.post("/exams", (req, res) => {
   const exam = { ...req.body, id: req.body?.id ? normalizeId(req.body.id) : `EX-${Date.now()}` };
   db.exams.push(exam);
   res.status(201).json(clone(exam));
+});
+router.put("/exams/:examId", (req, res) => {
+  const exam = findExam(req.params.examId);
+  Object.assign(exam, req.body, { id: exam.id, updatedAt: nowIso() });
+  res.json(clone(exam));
+});
+router.delete("/exams/:examId", (req, res) => {
+  const exam = findExam(req.params.examId);
+  db.exams = db.exams.filter((item) => item.id !== exam.id);
+  db.examAssignments = db.examAssignments.filter((assignment) => assignment.examId !== exam.id);
+  db.examAttempts = db.examAttempts.filter((attempt) => attempt.examId !== exam.id);
+  db.studentScores = db.studentScores.filter((score) => score.examId !== exam.id);
+  res.json({ success: true });
 });
 router.get("/scores", (req, res) => res.json(clone(db.studentScores)));
 router.get("/exams/:examId/scores", (req, res) =>

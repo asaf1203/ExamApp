@@ -5,7 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:mock": "vite --mode mock",
+    "dev:server": "vite --mode server",
     "build": "vite build",
+    "build:mock": "vite build --mode mock",
+    "build:server": "vite build --mode server",
     "lint": "eslint .",
     "test": "vitest",
     "preview": "vite preview"
