@@ -4,6 +4,8 @@
   "description": "Initial Express server for the ExamApp project.",
   "main": "server.js",
   "scripts": {
+    "client:dev:mock": "npm --prefix client run dev:mock",
+    "client:dev:server": "npm --prefix client run dev:server",
     "start": "node server.js",
     "dev": "node --watch server.js",
     "db:schema": "node server/db/runSchema.js",

@@ -44,6 +44,21 @@ DATABASE_URL=postgres://postgres:postgres@localhost:5432/exam_app
 PORT=3000
 CORS_ORIGIN=http://localhost:5173
 ```
+- `GET /`
+- `GET /health`
+- `GET /api/db`
+- `POST /api/db/reset`
+- CRUD:
+  - `GET /api/exams`
+  - `POST /api/exams`
+  - `GET /api/exams/:examId`
+  - `PUT /api/exams/:examId`
+  - `DELETE /api/exams/:examId`
+  - `GET /api/users`
+  - `POST /api/users`
+  - `GET /api/users/:userId`
+  - `PUT /api/users/:userId`
+  - `DELETE /api/users/:userId`
 
 Run the schema:
 
@@ -73,6 +88,7 @@ npm run db:compat
 
 ```sh
 npm run dev
+npm --prefix client run dev:mock
 ```
 
 The API runs at `http://localhost:3000/api`.
@@ -82,9 +98,7 @@ The API runs at `http://localhost:3000/api`.
 Create `client/.env.local` from `client/.env.server.example`:
 
 ```sh
-VITE_API_BACKEND=http
-VITE_API_BASE_URL=http://localhost:3000/api
-VITE_AUTH_API_URL=http://localhost:3000/api/auth
+npm --prefix client run dev:server
 ```
 
 Then start Vite:
@@ -127,3 +141,12 @@ remain as reference/backup data:
 
 You can confirm runtime API usage in the browser Network tab: frontend requests
 should go to `http://localhost:3000/api/...`.
+The mode files are `client/.env.mock` and `client/.env.server`. Example files are
+also available as `client/.env.mock.example` and `client/.env.server.example`.
+
+From the repository root, these shortcuts are also available:
+
+```sh
+npm run client:dev:mock
+npm run client:dev:server
+```
