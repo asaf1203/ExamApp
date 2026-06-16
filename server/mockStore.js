@@ -276,15 +276,25 @@ const resetStore = () => {
   return db;
 };
 
+const replaceStore = (nextDb) => {
+  Object.keys(db).forEach((key) => {
+    delete db[key];
+  });
+  Object.assign(db, nextDb);
+  return db;
+};
+
 module.exports = {
   ATTEMPT_STATUSES,
   EXAM_STATUSES,
   calculateMaxScore,
   clone,
+  createSeedStore,
   createToken,
   get db() {
     return db;
   },
   publicUser,
+  replaceStore,
   resetStore,
 };

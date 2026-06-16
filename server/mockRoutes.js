@@ -8,10 +8,44 @@ const {
   createToken,
   db,
   publicUser,
+  replaceStore,
   resetStore,
 } = require("./mockStore");
+const { loadStore, saveStore } = require("./db/storeRepository");
 
 const router = express.Router();
+
+router.use(async (req, res, next) => {
+  try {
+    replaceStore(await loadStore());
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
+
+router.use((req, res, next) => {
+  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+    next();
+    return;
+  }
+
+  const originalJson = res.json.bind(res);
+
+  res.json = (body) => {
+    if (res.statusCode >= 400) {
+      return originalJson(body);
+    }
+
+    saveStore(db)
+      .then(() => originalJson(body))
+      .catch(next);
+
+    return res;
+  };
+
+  next();
+});
 
 const normalizeEmail = (email) => String(email ?? "").trim().toLowerCase();
 const normalizeId = (id) => String(id ?? "").trim().toUpperCase();
