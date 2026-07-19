@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const express = require("express");
 const mockRoutes = require("./server/mockRoutes");
 const { loadStore } = require("./server/db/storeRepository");
@@ -5,6 +7,9 @@ const { replaceStore } = require("./server/mockStore");
 
 const app = express();
 const port = process.env.PORT || 3000;
+const clientDistPath = path.join(__dirname, "client", "dist");
+const clientIndexPath = path.join(clientDistPath, "index.html");
+const serveClient = fs.existsSync(clientIndexPath);
 
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", process.env.CORS_ORIGIN || "*");
@@ -22,18 +27,26 @@ app.use((req, res, next) => {
 app.use(express.json());
 app.use("/api", mockRoutes);
 
-app.get("/", (req, res) => {
-  res.json({
-    message: "ExamApp Express server is running",
-  });
-});
-
 app.get("/health", (req, res) => {
   res.json({
     status: "ok",
     uptime: process.uptime(),
   });
 });
+
+if (serveClient) {
+  app.use(express.static(clientDistPath));
+
+  app.get(/^(?!\/api(?:\/|$)).*/, (req, res) => {
+    res.sendFile(clientIndexPath);
+  });
+} else {
+  app.get("/", (req, res) => {
+    res.json({
+      message: "ExamApp Express server is running",
+    });
+  });
+}
 
 const start = async () => {
   const store = await loadStore();
