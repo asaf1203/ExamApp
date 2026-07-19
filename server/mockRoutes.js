@@ -14,8 +14,14 @@ const {
 const { loadStore, saveStore } = require("./db/storeRepository");
 
 const router = express.Router();
+const useDatabase = process.env.API_STORE !== "memory";
 
 router.use(async (req, res, next) => {
+  if (!useDatabase) {
+    next();
+    return;
+  }
+
   try {
     replaceStore(await loadStore());
     next();
@@ -25,7 +31,7 @@ router.use(async (req, res, next) => {
 });
 
 router.use((req, res, next) => {
-  if (["GET", "HEAD", "OPTIONS"].includes(req.method)) {
+  if (!useDatabase || ["GET", "HEAD", "OPTIONS"].includes(req.method)) {
     next();
     return;
   }
@@ -314,8 +320,14 @@ router.get("/config", (req, res) => {
   });
 });
 
-router.get("/db", (req, res) => res.json(clone(db)));
-router.post("/db/reset", (req, res) => res.json(clone(resetStore())));
+router.get("/db", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(db));
+});
+router.post("/db/reset", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(resetStore()));
+});
 
 router.get("/users", (req, res) => {
   requireRole(req, "teacher");
@@ -455,19 +467,28 @@ router.post("/auth/refresh", (req, res) => {
 });
 router.post("/auth/password-reset", (req, res) => res.json({ email: normalizeEmail(req.body?.email), success: true }));
 
-router.get("/exams", (req, res) => res.json(clone(db.exams)));
-router.get("/exams/:examId", (req, res) => res.json(clone(findExam(req.params.examId))));
+router.get("/exams", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(db.exams));
+});
+router.get("/exams/:examId", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(findExam(req.params.examId)));
+});
 router.post("/exams", (req, res) => {
+  requireRole(req, "teacher");
   const exam = { ...req.body, id: req.body?.id ? normalizeId(req.body.id) : `EX-${Date.now()}` };
   db.exams.push(exam);
   res.status(201).json(clone(exam));
 });
 router.put("/exams/:examId", (req, res) => {
+  requireRole(req, "teacher");
   const exam = findExam(req.params.examId);
   Object.assign(exam, req.body, { id: exam.id, updatedAt: nowIso() });
   res.json(clone(exam));
 });
 router.delete("/exams/:examId", (req, res) => {
+  requireRole(req, "teacher");
   const exam = findExam(req.params.examId);
   db.exams = db.exams.filter((item) => item.id !== exam.id);
   db.examAssignments = db.examAssignments.filter((assignment) => assignment.examId !== exam.id);
@@ -475,10 +496,14 @@ router.delete("/exams/:examId", (req, res) => {
   db.studentScores = db.studentScores.filter((score) => score.examId !== exam.id);
   res.json({ success: true });
 });
-router.get("/scores", (req, res) => res.json(clone(db.studentScores)));
-router.get("/exams/:examId/scores", (req, res) =>
-  res.json(clone(db.studentScores.filter((score) => score.examId === normalizeId(req.params.examId)))),
-);
+router.get("/scores", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(db.studentScores));
+});
+router.get("/exams/:examId/scores", (req, res) => {
+  requireRole(req, "teacher");
+  res.json(clone(db.studentScores.filter((score) => score.examId === normalizeId(req.params.examId))));
+});
 
 router.get("/student/exams", (req, res) => {
   const student = requireRole(req, "student");
