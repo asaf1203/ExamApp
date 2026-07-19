@@ -1,0 +1,26 @@
+# Gitleaks config for ExamApp.
+# Demo credentials that ship with the seed data are allowlisted so CI stays focused
+# on accidental production secret leaks.
+
+title = "ExamApp"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Known demo / local development placeholders"
+paths = [
+  '''(.*?)package-lock\.json$''',
+  '''(.*?)client/package-lock\.json$''',
+]
+
+regexes = [
+  '''student@example\.com''',
+  '''teacher@example\.com''',
+  '''student123''',
+  '''teacher123''',
+  '''postgres://postgres:postgres@''',
+  '''POSTGRES_PASSWORD: \$\{POSTGRES_PASSWORD:-postgres\}''',
+  '''mock-token-''',
+  '''mock-refresh-''',
+]

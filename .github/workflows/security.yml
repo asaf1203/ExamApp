@@ -1,0 +1,58 @@
+name: Security Checks
+
+# Run security checks for changes pushed to shared branches and for every PR.
+on:
+  push:
+    branches: [main, master, dev]
+  pull_request:
+
+# Both jobs only need permission to read repository contents.
+permissions:
+  contents: read
+
+jobs:
+  # Scan the complete Git history for accidentally committed credentials.
+  secrets:
+    name: Secret scanning (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Gitleaks needs the complete history, not GitHub's default shallow clone.
+          fetch-depth: 0
+
+      - name: Run Gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          # Used by the action to report findings on GitHub.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Project-specific allowlist and scanning configuration.
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  # Verify that protected API endpoints enforce authentication and user roles.
+  api-authorization:
+    name: API authorization checks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          # Match the Node.js version used by the server Docker image.
+          node-version: "22"
+          cache: npm
+
+      - name: Install dependencies
+        # Reproducible install based on package-lock.json.
+        run: npm ci
+
+      - name: Run authorization tests
+        run: npm run test:auth
+        env:
+          # Use the in-memory store so CI does not require a PostgreSQL service.
+          API_STORE: memory
+          # Only the API is needed for these tests.
+          SERVE_CLIENT: "0"
