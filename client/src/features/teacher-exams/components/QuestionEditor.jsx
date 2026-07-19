@@ -4,9 +4,32 @@ import {
   createEmptyTeacherQuestion,
 } from '../../../models/teacherModels'
 
-const questionTypeOptions = Object.entries(TEACHER_QUESTION_TYPE_CONFIG)
-
 const createOptionId = (index) => String.fromCharCode(65 + index)
+
+const fallbackQuestionTypes = Object.entries(TEACHER_QUESTION_TYPE_CONFIG).map(
+  ([type, config]) => ({
+    ...config,
+    enabled: true,
+    type,
+  }),
+)
+
+const getQuestionTypeOptions = (questionTypes, currentType) => {
+  const configuredTypes = questionTypes?.length ? questionTypes : fallbackQuestionTypes
+  const enabledTypes = configuredTypes.filter((questionType) => questionType.enabled)
+  const currentTypeConfig = configuredTypes.find(
+    (questionType) => questionType.type === currentType,
+  )
+
+  if (
+    currentTypeConfig &&
+    !enabledTypes.some((questionType) => questionType.type === currentType)
+  ) {
+    return [...enabledTypes, currentTypeConfig]
+  }
+
+  return enabledTypes
+}
 
 function ChoiceOptionEditor({ option, index, onChange, onDelete }) {
   return (
@@ -40,9 +63,13 @@ export function QuestionEditor({
   onMoveDown,
   onMoveUp,
   question,
+  questionTypes = fallbackQuestionTypes,
   total,
 }) {
-  const typeConfig = TEACHER_QUESTION_TYPE_CONFIG[question.type]
+  const questionTypeOptions = getQuestionTypeOptions(questionTypes, question.type)
+  const typeConfig =
+    questionTypes.find((questionType) => questionType.type === question.type) ??
+    TEACHER_QUESTION_TYPE_CONFIG[question.type]
   const supportsOptions = typeConfig?.supportsOptions
   const update = (patch) => onChange({ ...question, ...patch })
   const options = question.options ?? []
@@ -141,9 +168,10 @@ export function QuestionEditor({
             onChange={(event) => handleTypeChange(event.target.value)}
             value={question.type}
           >
-            {questionTypeOptions.map(([type, config]) => (
-              <option key={type} value={type}>
-                {config.label}
+            {questionTypeOptions.map((questionType) => (
+              <option key={questionType.type} value={questionType.type}>
+                {questionType.label}
+                {questionType.enabled ? '' : ' (disabled)'}
               </option>
             ))}
           </select>

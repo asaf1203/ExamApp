@@ -13,6 +13,7 @@ import { TeacherDashboardPage } from './features/teacher-exams/pages/TeacherDash
 import { TeacherExamEditorPage } from './features/teacher-exams/pages/TeacherExamEditorPage'
 import { TeacherExamListPage } from './features/teacher-exams/pages/TeacherExamListPage'
 import { TeacherExamPreviewPage } from './features/teacher-exams/pages/TeacherExamPreviewPage'
+import { TeacherQuestionTypesPage } from './features/teacher-exams/pages/TeacherQuestionTypesPage'
 import { TeacherSubmissionReviewPage } from './features/teacher-exams/pages/TeacherSubmissionReviewPage'
 import { TeacherSubmissionsPage } from './features/teacher-exams/pages/TeacherSubmissionsPage'
 import { AppLayout } from './layout/AppLayout'
@@ -41,6 +42,7 @@ const teacherRouteNames = new Set([
   'teacherExamCreate',
   'teacherExamEdit',
   'teacherExamPreview',
+  'teacherQuestionTypes',
   'teacherSubmissions',
   'teacherSubmissionReview',
 ])
@@ -128,6 +130,8 @@ function RouteSwitch() {
       return <TeacherExamEditorPage examId={route.params.examId} />
     case 'teacherExamPreview':
       return <TeacherExamPreviewPage examId={route.params.examId} />
+    case 'teacherQuestionTypes':
+      return <TeacherQuestionTypesPage />
     case 'teacherSubmissions':
       return <TeacherSubmissionsPage />
     case 'teacherSubmissionReview':

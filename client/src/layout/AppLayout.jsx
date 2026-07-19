@@ -28,6 +28,11 @@ const navItems = [
     roles: [USER_ROLES.teacher],
   },
   {
+    label: 'Types',
+    path: ROUTES.teacherQuestionTypes,
+    roles: [USER_ROLES.teacher],
+  },
+  {
     label: 'Submissions',
     path: ROUTES.teacherSubmissions,
     roles: [USER_ROLES.teacher],
