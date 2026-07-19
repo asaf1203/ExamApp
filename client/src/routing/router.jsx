@@ -16,6 +16,7 @@ export const ROUTES = Object.freeze({
   teacherDashboard: '/teacher',
   teacherExams: '/teacher/exams',
   teacherExamCreate: '/teacher/exams/new',
+  teacherQuestionTypes: '/teacher/question-types',
   teacherSubmissions: '/teacher/submissions',
 })
 
@@ -88,6 +89,10 @@ export const matchRoute = (path) => {
         params: { examId: segments[2] },
         path: normalizedPath,
       }
+    }
+
+    if (segments[1] === 'question-types' && segments.length === 2) {
+      return { name: 'teacherQuestionTypes', params: {}, path: normalizedPath }
     }
 
     if (segments[1] === 'submissions' && segments.length === 2) {

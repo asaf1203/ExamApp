@@ -843,6 +843,33 @@ body[data-theme='dark'] {
   color: var(--app-text);
 }
 
+.question-type-list {
+  display: grid;
+  gap: 14px;
+}
+
+.question-type-card {
+  background: var(--app-panel-soft);
+  border: 1px solid var(--app-border);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 320px);
+  padding: 16px;
+}
+
+.question-type-main {
+  align-items: start;
+  display: grid;
+  gap: 16px;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 220px);
+}
+
+.question-type-controls {
+  display: grid;
+  gap: 12px;
+}
+
 .grading-layout {
   align-items: start;
   display: grid;
@@ -964,6 +991,8 @@ body[data-theme='dark'] {
   .config-debug-grid,
   .teacher-dashboard-grid,
   .builder-layout,
+  .question-type-card,
+  .question-type-main,
   .grading-layout,
   .exam-taking-layout {
     grid-template-columns: 1fr;

@@ -233,6 +233,13 @@ export function TeacherDashboardPage() {
               </button>
               <button
                 className="btn btn-outline-primary"
+                onClick={() => navigate(ROUTES.teacherQuestionTypes)}
+                type="button"
+              >
+                Manage Question Types
+              </button>
+              <button
+                className="btn btn-outline-primary"
                 onClick={() => navigate(ROUTES.teacherSubmissions)}
                 type="button"
               >

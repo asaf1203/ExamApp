@@ -9,6 +9,10 @@ import {
   saveTeacherExam,
   unpublishTeacherExam,
 } from '../../../api/teacherService'
+import {
+  getEnabledQuestionTypes,
+  listTeacherQuestionTypes,
+} from '../../../api/questionTypeService'
 import { ConfirmDialog } from '../../../components/ConfirmDialog'
 import { LoadingState } from '../../../components/LoadingState'
 import { useAuth } from '../../../auth/authState'
@@ -165,11 +169,13 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
   )
   const [errors, setErrors] = useState([])
   const [loading, setLoading] = useState(mode !== 'create')
+  const [questionTypes, setQuestionTypes] = useState([])
   const [saveState, setSaveState] = useState('saved')
   const [saving, setSaving] = useState(false)
   const examRef = useRef(exam)
   const isCreate = mode === 'create'
   const currentExamId = exam.id || examId
+  const enabledQuestionTypes = getEnabledQuestionTypes(questionTypes)
 
   useEffect(() => {
     examRef.current = exam
@@ -211,6 +217,34 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
       isActive = false
     }
   }, [currentUser.id, examId, isCreate])
+
+  useEffect(() => {
+    let isActive = true
+
+    const loadQuestionTypes = async () => {
+      try {
+        const result = await listTeacherQuestionTypes()
+
+        if (isActive) {
+          setQuestionTypes(result)
+        }
+      } catch (err) {
+        if (isActive) {
+          notify({
+            message: err.message,
+            tone: 'warning',
+            title: 'Question types unavailable',
+          })
+        }
+      }
+    }
+
+    loadQuestionTypes()
+
+    return () => {
+      isActive = false
+    }
+  }, [notify])
 
   useEffect(() => {
     if (!dirty) {
@@ -264,8 +298,16 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
   }
 
   const addQuestion = (type = QUESTION_TYPES.singleChoice) => {
+    const typeSettings = questionTypes.find((questionType) => questionType.type === type)
+
     updateExam({
-      questions: [...exam.questions, createEmptyTeacherQuestion(type)],
+      questions: [
+        ...exam.questions,
+        {
+          ...createEmptyTeacherQuestion(type),
+          points: Number(typeSettings?.defaultPoints ?? 10),
+        },
+      ],
     })
     setActiveTab('questions')
   }
@@ -461,6 +503,10 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
                 <dd>{exam.questions.length}</dd>
               </div>
               <div>
+                <dt>Types enabled</dt>
+                <dd>{enabledQuestionTypes.length || 'Default'}</dd>
+              </div>
+              <div>
                 <dt>Max score</dt>
                 <dd>{getTeacherExamMaxScore(exam)} pts</dd>
               </div>
@@ -601,15 +647,28 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
                   <div>
                     <h2 className="h5 mb-1">Questions</h2>
                     <p className="text-secondary mb-0">
-                      Dynamic question editors are driven by centralized type config.
+                      Add, edit, reorder, duplicate, and retune managed question types.
                     </p>
                   </div>
                   <div className="dropdown-actions">
-                    {Object.entries(TEACHER_QUESTION_TYPE_CONFIG).map(([type, config]) => (
+                    <button
+                      className="btn btn-outline-primary"
+                      onClick={() => navigate(ROUTES.teacherQuestionTypes)}
+                      type="button"
+                    >
+                      Manage Types
+                    </button>
+                    {(enabledQuestionTypes.length
+                      ? enabledQuestionTypes
+                      : Object.entries(TEACHER_QUESTION_TYPE_CONFIG).map(([type, config]) => ({
+                          ...config,
+                          type,
+                        }))
+                    ).map((config) => (
                       <button
                         className="btn btn-outline-primary"
-                        key={type}
-                        onClick={() => addQuestion(type)}
+                        key={config.type}
+                        onClick={() => addQuestion(config.type)}
                         type="button"
                       >
                         Add {config.label}
@@ -629,6 +688,7 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
                   onMoveDown={() => moveQuestion(question.id, 1)}
                   onMoveUp={() => moveQuestion(question.id, -1)}
                   question={question}
+                  questionTypes={questionTypes}
                   total={exam.questions.length}
                 />
               ))}
@@ -641,9 +701,8 @@ export function TeacherExamEditorPage({ examId = null, mode = 'edit' }) {
               <section className="app-panel p-3 p-md-4">
                 <h2 className="h5 mb-3">Publishing</h2>
                 <p className="text-secondary">
-                  Publishing makes this teacher-managed mock exam visible in the teacher
-                  workspace. Student flow wiring can be connected later through the same
-                  service boundary.
+                  Publishing assigns this exam to students and makes it available in their
+                  exam dashboard during the configured availability window.
                 </p>
                 <div className="d-flex flex-wrap gap-2">
                   <button
