@@ -1,0 +1,88 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: exam-app-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-exam_app}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Optional host access for local tools (psql, GUI clients).
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-exam_app}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - exam-net
+
+  server:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    container_name: exam-app-server
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      # Use the Compose service name `db` as the hostname.
+      DATABASE_URL: postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-exam_app}
+      # Browser origin of the client container (mapped to host port 8080).
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:8080}
+    ports:
+      - "${SERVER_PORT:-3000}:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    networks:
+      - exam-net
+
+  client:
+    build:
+      context: ./client
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BACKEND: http
+        VITE_API_BASE_URL: /api
+        VITE_AUTH_API_URL: /api/auth
+        VITE_APP_ENV: production
+        VITE_MOCK_AUTH_ENABLED: "false"
+    container_name: exam-app-client
+    restart: unless-stopped
+    ports:
+      - "${CLIENT_PORT:-8080}:80"
+    depends_on:
+      server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks:
+      - exam-net
+
+volumes:
+  postgres_data:
+
+networks:
+  exam-net:
+    driver: bridge

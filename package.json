@@ -12,12 +12,17 @@
     "db:schema": "node server/db/runSchema.js",
     "db:seed": "node server/db/seed.js",
     "db:test": "node server/db/testConnection.js",
-    "db:compat": "node server/db/compatibilityTest.js"
+    "db:compat": "node server/db/compatibilityTest.js",
+    "test:auth": "node --test server/tests/authorization.test.js",
+    "test:deploy": "scripts/smoke-deploy.sh"
   },
   "dependencies": {
     "bootstrap": "^5.3.8",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "pg": "^8.21.0"
+  },
+  "devDependencies": {
+    "supertest": "^7.2.2"
   }
 }
